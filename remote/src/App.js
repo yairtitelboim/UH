@@ -48,6 +48,14 @@ function App() {
   }, [fetchArticles]);
 
   const handleArticleUpdate = useCallback((updatedArticle) => {
+    if (updatedArticle === null) {
+      console.log('App: Closing popup, no article selected');
+      return;
+    }
+    if (!updatedArticle || !updatedArticle.location) {
+      console.error('App: Invalid updatedArticle received:', updatedArticle);
+      return;
+    }
     console.log('App: handleArticleUpdate called with:', updatedArticle.location.address);
     isUpdatingRef.current = true;
     console.log('App: Set isUpdatingRef to true');

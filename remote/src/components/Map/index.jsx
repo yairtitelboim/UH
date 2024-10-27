@@ -19,6 +19,11 @@ function Map({ onArticleUpdate }) {
     validatedData, validationScore
   } = useMapLogic(map, mapContainer, articles, onArticleUpdate);
 
+  // Define the onClose function to hide the popup
+  const handleClosePopup = () => {
+    onArticleUpdate(null); // Assuming onArticleUpdate is used to update the selected article
+  };
+
   useEffect(() => {
     if (map.current) return; // initialize map only once
     map.current = new mapboxgl.Map({
@@ -80,6 +85,7 @@ function Map({ onArticleUpdate }) {
           matchedResults={matchedResults}
           validatedData={validatedData}
           validationScore={validationScore}
+          onClose={handleClosePopup} // Pass the onClose function
         />
       )}
     </div>

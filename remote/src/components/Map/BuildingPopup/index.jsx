@@ -1,7 +1,7 @@
-import React, { useRef, useState } from 'react';
-import PhysicalView from './Views/PhysicalView';
-import FinanceView from './Views/FinanceView';
-import ZoningView from './Views/ZoningView';
+import React, { useRef, useState, useEffect } from 'react';
+import PhysicalView from './Views/Building/PhysicalView';
+import FinanceView from './Views/Finance/FinanceView';
+import ZoningView from './Views/Zoning/ZoningView';
 import ValidationPanel from '../ValidationPanel';
 
 function BuildingPopup({
@@ -11,7 +11,7 @@ function BuildingPopup({
   validationScore, handleAnalysis
 }) {
   const popupRef = useRef(null);
-  const [popupWidth, setPopupWidth] = useState(445);
+  const [popupWidth, setPopupWidth] = useState(534); // Increased by 20% from 445
   const [popupHeight, setPopupHeight] = useState('85vh');
   const [activeView, setActiveView] = useState(null);
 
@@ -42,7 +42,7 @@ function BuildingPopup({
         width: `${popupWidth}px`,
         maxHeight: '95vh',
         overflowY: 'auto',
-        maxWidth: '90vw',
+        maxWidth: '108vw', // Increased by 20% from 90vw
       }}
     >
       <h2 style={{ 
@@ -66,14 +66,14 @@ function BuildingPopup({
         <img
           src={selectedArticle.image_url}
           alt={selectedArticle.title}
-          style={{ maxWidth: '100%', height: 'auto', marginBottom: '20px' }}
+          style={{ maxWidth: '100%', height: 'auto', marginBottom: '20px'}}
         />
       )}
-      <div style={{ display: 'flex', gap: '1px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', width: '100%' }}>
         <button
           onClick={() => handleViewChange('physical')}
           style={{
-            backgroundColor: '#333',
+            backgroundColor: activeView === 'physical' ? '#FF0000' : '#333',
             color: '#FFFFFF',
             border: 'none',
             padding: '8px 16px',
@@ -84,15 +84,15 @@ function BuildingPopup({
             flex: 1,
             transition: 'background-color 0.3s'
           }}
-          onMouseOver={(e) => e.target.style.backgroundColor = '#444'}
-          onMouseOut={(e) => e.target.style.backgroundColor = '#333'}
+          onMouseOver={(e) => e.target.style.backgroundColor = activeView === 'physical' ? '#FF0000' : '#444'}
+          onMouseOut={(e) => e.target.style.backgroundColor = activeView === 'physical' ? '#FF0000' : '#333'}
         >
           PLAN
         </button>
         <button
           onClick={() => handleViewChange('finance')}
           style={{
-            backgroundColor: '#333',
+            backgroundColor: activeView === 'finance' ? '#FF0000' : '#333',
             color: '#FFFFFF',
             border: 'none',
             padding: '8px 16px',
@@ -103,15 +103,15 @@ function BuildingPopup({
             flex: 1,
             transition: 'background-color 0.3s'
           }}
-          onMouseOver={(e) => e.target.style.backgroundColor = '#444'}
-          onMouseOut={(e) => e.target.style.backgroundColor = '#333'}
+          onMouseOver={(e) => e.target.style.backgroundColor = activeView === 'finance' ? '#FF0000' : '#444'}
+          onMouseOut={(e) => e.target.style.backgroundColor = activeView === 'finance' ? '#FF0000' : '#333'}
         >
           FINANCE
         </button>
         <button
           onClick={() => handleViewChange('zoning')}
           style={{
-            backgroundColor: '#333',
+            backgroundColor: activeView === 'zoning' ? '#FF0000' : '#333',
             color: '#FFFFFF',
             border: 'none',
             padding: '8px 16px',
@@ -122,8 +122,8 @@ function BuildingPopup({
             flex: 1,
             transition: 'background-color 0.3s'
           }}
-          onMouseOver={(e) => e.target.style.backgroundColor = '#444'}
-          onMouseOut={(e) => e.target.style.backgroundColor = '#333'}
+          onMouseOver={(e) => e.target.style.backgroundColor = activeView === 'zoning' ? '#FF0000' : '#444'}
+          onMouseOut={(e) => e.target.style.backgroundColor = activeView === 'zoning' ? '#FF0000' : '#333'}
         >
           ZONING
         </button>

@@ -23,6 +23,20 @@ export const useMapLogic = (map, mapContainer, articles, onArticleUpdate) => {
   const MAX_RETRIES = 3;
   const API_URL = process.env.REACT_APP_API_URL;
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        handleClosePopup();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []); // Empty dependency array to ensure this effect runs once
+
   const handleMapLoad = () => {
     console.log('Map loaded');
     updateMarkers(articles);
@@ -415,10 +429,16 @@ export const useMapLogic = (map, mapContainer, articles, onArticleUpdate) => {
     console.log('Map: handleMatchResults completed');
   };
 
+  const handleClosePopup = () => {
+    setSelectedArticle(null);
+    setPopupCoordinates(null);
+    onArticleUpdate(null); // Ensure this is called to update the parent state
+  };
+
   return {
     lng, lat, zoom, selectedArticle, popupCoordinates, handleMapLoad, updateMarkers,
     handleValidate, handleMatchResults, showComparison, validationError, isValidating,
     retryCount, MAX_RETRIES, lastValidationTime, showTypewriter, matchedResults,
-    validatedData, validationScore, handleAnalysis
+    validatedData, validationScore, handleAnalysis, handleClosePopup
   };
 };
