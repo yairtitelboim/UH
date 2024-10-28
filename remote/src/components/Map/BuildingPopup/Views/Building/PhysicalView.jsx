@@ -1,81 +1,100 @@
 import React from 'react';
+import PhysicalOverall from './PhysicalOverall'; // Import the PhysicalOverall component
+import Floorplan from './Floorplan'; // Import the Floorplan component
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Ruler, Building } from 'lucide-react';
+import { Ruler, Maximize2, Square } from 'lucide-react';
 import physicalData from './PhysicalValue.json';
 
 function PhysicalView() {
   const building = physicalData[0]; // Assuming you want to display the first building's data
 
-  const architecturalDetails = [
-    { feature: 'Style', value: building.details.architectural.style },
-    { feature: 'Materials', value: building.details.architectural.materials.join(', ') },
-    { feature: 'Window Pattern', value: building.details.architectural.window_pattern },
-    { feature: 'Window Count', value: building.details.architectural.window_count },
+  const physicalMetrics = [
+    {
+      metric: 'Floor Depth',
+      actual: 42,
+      target: 45,
+      score: 93,
+      impact: 'Optimal for unit layouts',
+      icon: Square
+    },
+    {
+      metric: 'Window Line',
+      actual: 95,
+      target: 85,
+      score: 112,
+      impact: 'Excellent natural light',
+      icon: Maximize2
+    },
+    {
+      metric: 'Ceiling Height',
+      actual: 12.2,
+      target: 11.5,
+      score: 106,
+      impact: 'Above minimum requirement',
+      icon: Ruler
+    }
   ];
 
-  const notableFeatures = building.details.architectural.notable_features.map((feature, index) => ({
-    feature: `Feature ${index + 1}`,
-    value: feature,
-  }));
-
   return (
-    <div className="bg-black text-white p-6 rounded-lg">
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-gray-800 p-4 rounded">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Size</span>
-            <Ruler className="w-5 h-5 text-green-500" />
-          </div>
-          <div className="text-2xl font-bold">{building.details.physical_characteristics.size}</div>
-          <div className="text-sm text-green-500">Stories: {building.details.physical_characteristics.stories}</div>
-        </div>
-        
-        <div className="bg-gray-800 p-4 rounded">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Ceiling Height</span>
-            <Building className="w-5 h-5 text-blue-500" />
-          </div>
-          <div className="text-2xl font-bold">{building.details.physical_characteristics.ceiling_height}</div>
-          <div className="text-sm text-blue-500">Floor Plate: {building.details.physical_characteristics.floor_plate}</div>
-        </div>
+    <div className="bg-black text-white p-2 mt-6 rounded-lg">
+      {/* Render the PhysicalOverall component */}
+      <PhysicalOverall />
 
-        <div className="bg-gray-800 p-4 rounded">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Window Line</span>
-          </div>
-          <div className="text-2xl font-bold">{building.details.physical_characteristics.window_line}</div>
-          <div className="text-sm text-red-500">Window Count: {building.details.architectural.window_count}</div>
-        </div>
+      {/* Render the Floorplan component */}
+      <Floorplan />
+
+      {/* Physical Match Metrics Section */}
+      <h3 className="text-xl font-bold mb-6 mt-6">Physical Conversion Metrics</h3>
+      
+      <div className="grid grid-cols-3 gap-2 mb-8">
+        {physicalMetrics.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.metric} className="bg-gray-800 p-4 rounded">
+              <div className="flex items-center space-x-2 mb-3">
+                <Icon className="w-5 h-5 text-red-500" />
+                <span className="text-sm text-gray-400">{item.metric}</span>
+              </div>
+              <div className="text-2xl font-bold mb-1">
+                {item.actual}{item.metric === 'Window Line' ? '%' : 'ft'}
+              </div>
+              <div className="text-sm text-gray-400">
+                Target: {item.target}{item.metric === 'Window Line' ? '%' : 'ft'}
+              </div>
+              <div className="mt-6 text-sm text-gray-300">{item.impact}</div>
+            </div>
+          );
+        })}
       </div>
-
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-gray-800 p-4 rounded">
-          <h4 className="text-sm text-gray-400 mb-4">Architectural Details</h4>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={architecturalDetails}>
-                <XAxis dataKey="feature" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#ef4444" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-gray-800 p-4 rounded">
-          <h4 className="text-sm text-gray-400 mb-4">Notable Features</h4>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={notableFeatures}>
-                <XAxis dataKey="feature" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#3b82f6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      <div className="h-48 mr-10 mt-14 mb-10 ">
+        <ResponsiveContainer width="100%" height="120%">
+          <BarChart data={physicalMetrics}>
+            <XAxis dataKey="metric" />
+            <YAxis domain={[0, 120]} />
+            <Tooltip 
+              content={({ payload, label }) => {
+                if (!payload?.length) return null;
+                const data = payload[0].payload;
+                return (
+                  <div className="bg-gray-900 p-3 rounded border border-gray-700">
+                    <div className="font-bold mb-2">{label}</div>
+                    <div className="text-sm">
+                      Actual: {data.actual}{data.metric === 'Window Line' ? '%' : 'ft'}<br />
+                      Target: {data.target}{data.metric === 'Window Line' ? '%' : 'ft'}<br />
+                      Score: {data.score}%
+                    </div>
+                  </div>
+                );
+              }}
+            />
+            <Bar
+              dataKey="score"
+              fill="#ef4444"
+              background={{ fill: '#374151' }}
+              label={{ position: 'top', fill: '#fff' }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
