@@ -25,7 +25,7 @@ function BuildingPopup({
   const [popupHeight, setPopupHeight] = useState('85vh');
   const [activeView, setActiveView] = useState('dashboard');
   const [showScalePopup, setShowScalePopup] = useState(false);
-  const [buildingOffset] = useState(10);
+  const [buildingOffset] = useState(30);
 
   useEffect(() => {
     console.log('BuildingPopup rendered');

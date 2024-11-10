@@ -165,11 +165,15 @@ function Map({ onArticleUpdate }) {
 
         const buildingHeightMeters = buildingShape.properties.height || 30;
         const FLOOR_HEIGHT_METERS = 3;
-        const BUFFER_SIZE = -2;
+        const BUFFER_SIZE = -10;
         const numberOfFloors = Math.ceil(buildingHeightMeters / FLOOR_HEIGHT_METERS);
 
         setTimeout(() => {
-          // Add building shell with very low opacity
+          // Remove existing sources and layers before adding new ones
+          if (map.current.getSource('building-shell')) {
+            map.current.removeLayer('building-shell-layer');
+            map.current.removeSource('building-shell');
+          }
           map.current.addSource('building-shell', {
             type: 'geojson',
             data: buildingShape
@@ -181,7 +185,7 @@ function Map({ onArticleUpdate }) {
             source: 'building-shell',
             paint: {
               'fill-extrusion-color': '#FF4136',
-              'fill-extrusion-opacity': 0.05, // Much more transparent
+              'fill-extrusion-opacity': 0.5,
               'fill-extrusion-height': buildingHeightMeters,
               'fill-extrusion-base': 0,
               'fill-extrusion-vertical-gradient': true
@@ -190,7 +194,12 @@ function Map({ onArticleUpdate }) {
 
           // Create buffered shape
           const bufferedShape = buffer(buildingShape, BUFFER_SIZE, { units: 'meters' });
-          
+
+          // Remove existing sources and layers before adding new ones
+          if (map.current.getSource('floor-buffer')) {
+            map.current.removeLayer('interior-extrusion');
+            map.current.removeSource('floor-buffer');
+          }
           map.current.addSource('floor-buffer', {
             type: 'geojson',
             data: bufferedShape
@@ -199,7 +208,7 @@ function Map({ onArticleUpdate }) {
           // Add floor outlines for each level
           for (let floor = 0; floor <= numberOfFloors; floor++) {
             const heightMeters = floor * FLOOR_HEIGHT_METERS;
-            
+
             // Add outer floor outline (white)
             map.current.addLayer({
               id: `floor-line-${floor}`,
@@ -222,7 +231,7 @@ function Map({ onArticleUpdate }) {
               paint: {
                 'fill-extrusion-color': '#4CAF50',
                 'fill-extrusion-opacity': 0.6,
-                'fill-extrusion-height': heightMeters + 0.1,
+                'fill-extrusion-height': heightMeters + 3.1,
                 'fill-extrusion-base': heightMeters,
                 'fill-extrusion-vertical-gradient': true
               }
@@ -230,6 +239,20 @@ function Map({ onArticleUpdate }) {
 
             console.log(`Added floor ${floor} at height ${heightMeters}m`);
           }
+
+          // Extrude the interior portion of the buffer
+          map.current.addLayer({
+            id: 'interior-extrusion',
+            type: 'fill-extrusion',
+            source: 'floor-buffer',
+            paint: {
+              'fill-extrusion-color': '#4CAF50',
+              'fill-extrusion-opacity': 0.6,
+              'fill-extrusion-height': 30, // Extrude by 3 meters
+              'fill-extrusion-base': 10,
+              'fill-extrusion-vertical-gradient': true
+            }
+          });
 
           // Camera adjustments
           map.current.flyTo({

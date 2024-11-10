@@ -272,7 +272,7 @@ export const useMapLogic = (map, mapContainer, articles, onArticleUpdate) => {
 
   const extractBuildingCore = (shape) => {
     if (!shape) return null;
-    return buffer(shape, -10, { units: 'meters' });
+    return buffer(shape, 65, { units: 'meters' });
   };
 
   const calculatePerimeter = (shape) => {
