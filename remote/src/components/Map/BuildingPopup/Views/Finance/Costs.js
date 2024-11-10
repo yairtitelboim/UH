@@ -1,6 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { DollarSign, Scale, TrendingUp } from 'lucide-react';
+import { DollarSign, Scale, TrendingUp, Home, Hammer, FileText } from 'lucide-react';
 
 const Costs = () => {
   const yieldMetrics = {
@@ -14,9 +14,9 @@ const Costs = () => {
       { property: "DC Average", yield: 5.8 }
     ],
     costBreakdown: [
-      { category: 'Acquisition', cost: 84500000 },
-      { category: 'Hard Costs', cost: 15500000 },
-      { category: 'Soft Costs', cost: 4000000 }
+      { category: 'Acquisition', cost: 84500000, icon: Home },
+      { category: 'Hard Costs', cost: 15500000, icon: Hammer },
+      { category: 'Soft Costs', cost: 4000000, icon: FileText }
     ],
     stabilizedMetrics: [
       { year: 2024, noi: 2915000, yield: 2.8 },
@@ -28,8 +28,8 @@ const Costs = () => {
   };
 
   return (
-    <div className="bg-black text-white p-6 rounded-lg">
-      <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="bg-black text-white p-4 mt-1 rounded-lg">
+      <div className="grid grid-cols-3 gap-2 mb-6">
         <div className="bg-gray-800 p-4 rounded">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-400">Total Cost</span>
@@ -58,13 +58,11 @@ const Costs = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-2">
         <div className="bg-gray-800 p-4 rounded">
           <h4 className="text-sm text-gray-400 mb-4">Yield Stabilization</h4>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
-
-                
               <LineChart data={yieldMetrics.stabilizedMetrics} margin={{ left: -30, right: 30 }}>
                 <XAxis dataKey="year" />
                 <YAxis domain={[0, 8]} />
@@ -92,7 +90,7 @@ const Costs = () => {
         <div className="bg-gray-800 p-4 rounded">
           <h4 className="text-sm text-gray-400 mb-4">Market Comparison</h4>
           <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%" >
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={yieldMetrics.comparableYields} margin={{ left: -35, right: 20 }}>
                 <XAxis dataKey="property" />
                 <YAxis domain={[5, 7]} />
@@ -109,7 +107,7 @@ const Costs = () => {
                     );
                   }}
                 />
-                <Bar dataKey="yield" fill="#ef4444" />
+                <Bar dataKey="yield" fill="#3b82f6" /> {/* Changed color to blue */}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -118,15 +116,21 @@ const Costs = () => {
 
       <div className="mt-4 bg-gray-800 p-4 rounded">
         <div className="grid grid-cols-3 gap-4 text-center">
-          {yieldMetrics.costBreakdown.map(item => (
-            <div key={item.category}>
-              <div className="text-sm text-gray-400">{item.category}</div>
-              <div className="text-xl font-bold">${(item.cost / 1000000).toFixed(1)}M</div>
-              <div className="text-sm text-gray-400">
-                {((item.cost / yieldMetrics.totalCost) * 100).toFixed(1)}%
+          {yieldMetrics.costBreakdown.map(item => {
+            const Icon = item.icon;
+            return (
+              <div key={item.category}>
+                <div className="flex items-center justify-center mb-2">
+                  <Icon className="w-5 h-5 text-gray-400" />
+                  <span className="text-sm text-gray-400 ml-2">{item.category}</span>
+                </div>
+                <div className="text-xl font-bold">${(item.cost / 1000000).toFixed(1)}M</div>
+                <div className="text-sm text-gray-400">
+                  {((item.cost / yieldMetrics.totalCost) * 100).toFixed(1)}%
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

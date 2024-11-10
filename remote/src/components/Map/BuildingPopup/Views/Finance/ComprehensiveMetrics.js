@@ -33,8 +33,15 @@ const ComprehensiveMetrics = () => {
   ];
 
   return (
-    <div className="bg-black text-white p-6 rounded-lg">
-      <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="bg-black text-white p-4 mt-6 rounded-lg">
+            <div className="flex justify-between items-center mb-0">
+        <h3 className="text-xl mt-4 font-bold">Financial Conversion Analysis</h3>
+
+      </div>
+      <div className="text-xs text-gray-400 mt-0 mb-6">
+          Building Value: $9,000,000 | 150 Units
+        </div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-gray-800 p-4 rounded">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-400">Target IRR</span>
@@ -43,6 +50,8 @@ const ComprehensiveMetrics = () => {
           <div className="text-2xl font-bold">17.8%</div>
           <div className="text-sm text-green-500">+2.3% above market</div>
         </div>
+        
+
         
         <div className="bg-gray-800 p-4 rounded">
           <div className="flex items-center justify-between mb-2">

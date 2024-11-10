@@ -10,7 +10,6 @@ function FinanceView() {
 
   return (
     <div>
-      {/* Ensure this is the only button */}
     
 
       {/* Add the ComprehensiveMetrics component here */}

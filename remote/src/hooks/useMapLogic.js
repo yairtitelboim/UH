@@ -272,7 +272,7 @@ export const useMapLogic = (map, mapContainer, articles, onArticleUpdate) => {
 
   const extractBuildingCore = (shape) => {
     if (!shape) return null;
-    return buffer(shape, -10, { units: 'meters' });
+    return buffer(shape, 65, { units: 'meters' });
   };
 
   const calculatePerimeter = (shape) => {
@@ -290,10 +290,12 @@ export const useMapLogic = (map, mapContainer, articles, onArticleUpdate) => {
     setShowTypewriter(true);
     setValidationError(null);
 
+
+    
     const attemptValidation = async (attempt) => {
       try {
         console.log(`Sending validation request for: ${selectedArticle.location.address}, attempt ${attempt}`);
-        console.log('API URL:', API_URL);  // Log the API URL
+        console.log('API URL:', API_URL);
         const response = await axios.post(`${API_URL}/validate`, selectedArticle, {
           headers: {
             'Content-Type': 'application/json',
@@ -301,20 +303,32 @@ export const useMapLogic = (map, mapContainer, articles, onArticleUpdate) => {
           },
         });
 
-        console.log("Received response:", response);
-        if (response.data && response.data.original && response.data.updated) {
-          setValidatedData(response.data);
-          const score = calculateValidationScore(response.data.original, response.data.updated);
+        console.log("Full response data:", response.data);
+
+        if (response.data) {
+          let originalData = response.data.original || selectedArticle;
+          let updatedData = response.data.updated || response.data;
+
+          setValidatedData({
+            original: originalData,
+            updated: updatedData
+          });
+          
+          const score = calculateValidationScore(originalData, updatedData);
           setValidationScore(score);
           setLastValidationTime(new Date().toLocaleString());
           setShowComparison(true);
           setRetryCount(0);
-        } else {
-          throw new Error('Invalid response data');
+          return;
         }
+        
+        throw new Error('Invalid response structure');
       } catch (error) {
         console.error('Error validating data:', error);
-        console.error('Error details:', error.response ? error.response.data : 'No response data');  // Log error details
+        console.error('Full error object:', error);
+        console.error('Response data:', error.response?.data);
+        console.error('Response status:', error.response?.status);
+        
         if (attempt < MAX_RETRIES) {
           console.log(`Retrying validation (${attempt + 1}/${MAX_RETRIES})...`);
           setRetryCount(attempt);

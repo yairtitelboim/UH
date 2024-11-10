@@ -5,7 +5,7 @@ import { polygon, buffer, length, polygonToLine } from '@turf/turf';
 import axios from 'axios';
 import Typewriter from 'typewriter-effect';
 import { FaCheck } from 'react-icons/fa'; // Import the check icon
-import ZoningMetrics from '../../../src copy/components/ZoningMetrics';
+import ZoningMetrics from './ZoningMetrics';
 
 // Add this near the top of your file, outside the Map component
 window.handleBackToOriginal = null;
