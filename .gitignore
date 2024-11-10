@@ -27,21 +27,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# IDE and System
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-
-# Project Specific
-.coverage
-PLAN.txt
-prism.txt
-atlas.egg-info/
-*.pt
-*.pyc
-
 # Node/React
 node_modules/
 package-lock.json
@@ -49,6 +34,25 @@ package.json
 
 # Project Directories
 /flask-backend
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE and System
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project Specific
+.coverage
+PLAN.txt
+prism.txt
+atlas.egg-info/
+*.pt
 
 # Force include
 !.gitignore
