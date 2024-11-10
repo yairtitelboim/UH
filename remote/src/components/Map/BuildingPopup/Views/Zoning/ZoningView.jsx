@@ -70,7 +70,7 @@ function ZoningView() {
   };
 
   return (
-    <div className="bg-black text-white p-1 mt-6 rounded-lg">
+    <div className="bg-black text-white p-4 mt-6 mr-2 rounded-lg">
       
       <div className="flex justify-between items-center mb-0">
         <h3 className="text-xl mt-4 font-bold">Zoning Conversion Analysis</h3>
@@ -83,7 +83,7 @@ function ZoningView() {
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-gray-800 p-4 rounded">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">FAR Achieved</span>
+            <span className="text-sm text-gray-400">Likely FAR Achieved</span>
             <Building className="w-5 h-5 text-green-500" />
           </div>
           <div className="text-2xl font-bold">15.0</div>
@@ -101,7 +101,7 @@ function ZoningView() {
 
         <div className="bg-gray-800 p-4 rounded">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Fast Track</span>
+            <span className="text-sm text-gray-400">Fast Track Timeline</span>
             <Clock className="w-5 h-5 text-red-500" />
           </div>
           <div className="text-2xl font-bold">12-18</div>

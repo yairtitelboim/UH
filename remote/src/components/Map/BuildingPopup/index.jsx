@@ -7,6 +7,13 @@ import MasterMetrics from './Views/Comps/Dashboard';
 import { Book, Scale } from 'lucide-react';
 import ScalePopup from './Views/Comps/Scale';
 
+const BUILDING_COLORS = {
+  OUTER: '#FF4136',  // Red color matching map layer
+  INNER: '#4CAF50',  // Green color matching map layer
+  BUTTON_ACTIVE: '#FF0000',
+  BUTTON_INACTIVE: '#333',
+};
+
 function BuildingPopup({
   selectedArticle, popupCoordinates, handleBackToOriginal, handleValidate,
   handleMatchResults, showComparison, validationError, isValidating, retryCount,
@@ -14,10 +21,11 @@ function BuildingPopup({
   validationScore, handleAnalysis
 }) {
   const popupRef = useRef(null);
-  const [popupWidth, setPopupWidth] = useState(450);
+  const [popupWidth] = useState(490); // Remove setPopupWidth as we want fixed width
   const [popupHeight, setPopupHeight] = useState('85vh');
   const [activeView, setActiveView] = useState('dashboard');
   const [showScalePopup, setShowScalePopup] = useState(false);
+  const [buildingOffset] = useState(10);
 
   useEffect(() => {
     console.log('BuildingPopup rendered');
@@ -29,10 +37,7 @@ function BuildingPopup({
   };
 
   const toggleScalePopup = () => {
-    console.log('Scale button clicked');
-    console.log('Current showScalePopup state:', showScalePopup);
     setShowScalePopup(!showScalePopup);
-    console.log('New showScalePopup state:', !showScalePopup);
   };
 
   const exampleBuildingData = {
@@ -43,6 +48,18 @@ function BuildingPopup({
     completion_date: "2025",
     image_url: "https://via.placeholder.com/150",
     title: "Example Building"
+  };
+
+  // Create separate container styles for main content and scale popup
+  const mainContentStyle = {
+    width: `${popupWidth}px`,
+    flex: 'none', // Prevent flex from affecting width
+  };
+
+  const scalePopupStyle = {
+    width: `${popupWidth}px`,
+    flex: 'none', // Prevent flex from affecting width
+    marginLeft: '10px',
   };
 
   return (
@@ -56,22 +73,22 @@ function BuildingPopup({
         color: '#fff',
         padding: '10px',
         borderRadius: '5px',
-        width: `${popupWidth * (showScalePopup ? 2 : 1)}px`, // Double width if ScalePopup is shown
         maxHeight: '95vh',
         overflowY: 'auto',
         maxWidth: '118vw',
-        display: 'flex', // Use flexbox to arrange content side by side
+        display: 'flex',
+        width: 'auto', // Let width be determined by content
       }}
     >
-      <div style={{ flex: 1 }}>
+      <div style={mainContentStyle}>
         <h2 style={{ 
           color: '#FFFFFF', 
           marginTop: '0', 
           marginBottom: '10px',
           fontWeight: 'bold',
           fontSize: '1.2em',
-          maxWidth: '400px', // Set a maximum width to control layout
-          lineHeight: '1.4em', // Adjust line height for readability
+          maxWidth: '400px',
+          lineHeight: '1.4em',
         }}>
           {selectedArticle.location.address || 'N/A'}, {selectedArticle.location.neighborhood || ''} {selectedArticle.location.city || 'Unknown City'}, {selectedArticle.location.state || 'Unknown State'}
         </h2>
@@ -116,7 +133,7 @@ function BuildingPopup({
                 position: 'absolute',
                 top: '10px',
                 left: '50px',
-                backgroundColor: '#FF0000',
+                backgroundColor: '#242020',
                 border: 'none',
                 padding: '5px',
                 borderRadius: '50%',
@@ -145,9 +162,12 @@ function BuildingPopup({
           }}
         >
           <button
-            onClick={() => handleViewChange('physical')}
+            onClick={() => {
+              handleViewChange('physical');
+              handleAnalysis();
+            }}
             style={{
-              backgroundColor: activeView === 'physical' ? '#FF0000' : '#333',
+              backgroundColor: activeView === 'physical' ? BUILDING_COLORS.OUTER : BUILDING_COLORS.BUTTON_INACTIVE,
               color: '#FFFFFF',
               border: 'none',
               padding: '8px 16px',
@@ -158,8 +178,8 @@ function BuildingPopup({
               flex: activeView === 'physical' ? 1.2 : 1,
               transition: 'background-color 0.3s, flex 0.3s'
             }}
-            onMouseOver={(e) => e.target.style.backgroundColor = activeView === 'physical' ? '#FF0000' : '#444'}
-            onMouseOut={(e) => e.target.style.backgroundColor = activeView === 'physical' ? '#FF0000' : '#333'}
+            onMouseOver={(e) => e.target.style.backgroundColor = activeView === 'physical' ? BUILDING_COLORS.OUTER : '#444'}
+            onMouseOut={(e) => e.target.style.backgroundColor = activeView === 'physical' ? BUILDING_COLORS.OUTER : BUILDING_COLORS.BUTTON_INACTIVE}
           >
             PLAN
           </button>
@@ -204,7 +224,12 @@ function BuildingPopup({
         </div>
         <div>
           {activeView === 'dashboard' && <MasterMetrics />}
-          {activeView === 'physical' && <PhysicalView />}
+          {activeView === 'physical' && (
+            <PhysicalView 
+              buildingOffset={buildingOffset}
+              colors={BUILDING_COLORS}
+            />
+          )}
           {activeView === 'finance' && <FinanceView />}
           {activeView === 'zoning' && <ZoningView />}
         </div>
@@ -224,7 +249,7 @@ function BuildingPopup({
         />
       </div>
       {showScalePopup && (
-        <div style={{ flex: 1 }}>
+        <div style={scalePopupStyle}>
           <ScalePopup buildingData={exampleBuildingData} />
         </div>
       )}

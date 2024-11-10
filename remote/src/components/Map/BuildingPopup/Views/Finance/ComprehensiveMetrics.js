@@ -33,7 +33,7 @@ const ComprehensiveMetrics = () => {
   ];
 
   return (
-    <div className="bg-black text-white p-1 mt-6 rounded-lg">
+    <div className="bg-black text-white p-4 mt-6 rounded-lg">
             <div className="flex justify-between items-center mb-0">
         <h3 className="text-xl mt-4 font-bold">Financial Conversion Analysis</h3>
 

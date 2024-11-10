@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { Ruler, Maximize2, Square } from 'lucide-react';
 import physicalData from './PhysicalValue.json';
 
-function PhysicalView() {
+function PhysicalView({ onShowInterior }) {
   const building = physicalData[0]; // Assuming you want to display the first building's data
 
   const physicalMetrics = [
@@ -34,6 +34,13 @@ function PhysicalView() {
       icon: Ruler
     }
   ];
+
+  const handleShowInterior = () => {
+    if (onShowInterior) {
+      console.log("Show Interior button clicked");
+      onShowInterior();
+    }
+  };
 
   return (
     <div className="bg-black text-white p-2 mt-6 rounded-lg">
@@ -96,6 +103,9 @@ function PhysicalView() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+      <button onClick={handleShowInterior} className="bg-red-500 text-white p-2 rounded">
+        Show Interior
+      </button>
     </div>
   );
 }

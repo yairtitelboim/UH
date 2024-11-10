@@ -119,13 +119,13 @@ const DCFAnalysis = () => {
             trend={2.5}
           />
           <MetricCard 
-            title="Peak Equity"
+            title="Peak & Equity"
             value="$86M"
             subValue="Q4 2024"
             trend={-1.2}
           />
           <MetricCard 
-            title="IRR"
+            title="IRR Base Case"
             value="15.5%"
             subValue="unlevered"
             trend={0.8}

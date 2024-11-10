@@ -64,7 +64,7 @@ const PhysicalOverall = () => {
   ];
 
   return (
-    <div className="bg-black text-white p-0 mt-2 rounded-lg">
+    <div className="bg-black text-white p-2 mr-1 mt-2 rounded-lg">
       <div className="flex justify-between items-center mt-1">
         <h3 className="text-xl mt-1 font-bold">Physical Conversion Analysis</h3>
 

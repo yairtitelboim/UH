@@ -115,8 +115,9 @@ const FloorPlanAnalysis = () => {
     };
   };
 
-  const renderUnit = (unit, x, y) => (
+  const renderUnit = (unit, x, y, index) => (
     <g 
+      key={`${unit}-${index}`}
       transform={`translate(${x}, ${y})`}
       onClick={() => setSelectedUnit(unit)}
       className="cursor-pointer transition-all duration-200 hover:opacity-80"
@@ -155,7 +156,7 @@ const FloorPlanAnalysis = () => {
       )}
       {[...Array(units[unit].windows)].map((_, i) => (
         <rect
-          key={i}
+          key={`window-${unit}-${index}-${i}`}
           x={i * (units[unit].width / units[unit].windows)}
           y={0}
           width={1.5}
@@ -264,11 +265,11 @@ const FloorPlanAnalysis = () => {
           <g transform={`translate(${dims.padding}, 0)`}>
             {/* North wing */}
             {northWing.map((unit, i) => (
-              renderUnit(unit.type, unit.x, dims.padding + 5)
+              renderUnit(unit.type, unit.x, dims.padding + 5, i)
             ))}
             {/* South wing */}
             {southWing.map((unit, i) => (
-              renderUnit(unit.type, unit.x, dims.padding + dims.depth - units[unit.type].depth - 5)
+              renderUnit(unit.type, unit.x, dims.padding + dims.depth - units[unit.type].depth - 5, i)
             ))}
           </g>
 

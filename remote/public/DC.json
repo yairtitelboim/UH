@@ -38,7 +38,7 @@
         "timeline": "60 days"
       },
       "incentives": {
-        "description": "Additional density in exchange for community benefits",
+        "description": "Additional density in exchange for community benefits but no tax credits",
         "type": "Density Bonus & TDRs"
       },
       "required_permits": [
@@ -66,7 +66,7 @@
       "timeline": "60 days"
     },
     "incentives": {
-      "description": "Additional density in exchange for community benefits",
+      "description": "Additional density in exchange for community benefits but no tax credits",
       "type": "Density Bonus & TDRs"
     },
     "required_permits": [

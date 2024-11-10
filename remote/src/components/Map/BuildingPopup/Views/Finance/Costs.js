@@ -28,7 +28,7 @@ const Costs = () => {
   };
 
   return (
-    <div className="bg-black text-white p-1 mt-1 rounded-lg">
+    <div className="bg-black text-white p-4 mt-1 rounded-lg">
       <div className="grid grid-cols-3 gap-2 mb-6">
         <div className="bg-gray-800 p-4 rounded">
           <div className="flex items-center justify-between mb-2">
