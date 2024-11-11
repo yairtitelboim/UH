@@ -8,6 +8,10 @@ from atlas.services.process import PropertyProcessor
 from atlas.services.market_analysis import MarketAnalyzer
 from atlas.prism.integration import PrismIntegration
 from atlas.core.cre_analysis import CREAnalysisService
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables
 
 def create_app() -> FastAPI:
     """Create FastAPI application."""

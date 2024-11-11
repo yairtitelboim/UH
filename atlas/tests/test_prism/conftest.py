@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock, patch
 from atlas.prism.integration import PrismIntegration
 from atlas.prism.models import BuildingDimensions, Floorplate, OptimizedLayout
+import os
 
 @pytest.fixture
 def mock_images():
@@ -17,9 +18,13 @@ def mock_google_client():
 
 @pytest.fixture
 def prism(mock_google_client, mock_images):
+    # Mock environment variable for testing
+    os.environ['GOOGLE_API_KEY'] = 'test_google_key'
+
     mock_config = {
         'api_key': 'test_key',
-        'google_maps_api_key': 'test_google_key'
+        'google_maps_api_key': os.getenv('GOOGLE_API_KEY'),  # Use mocked env var
+        'cache_dir': '/tmp/test_cache'
     }
     
     # Create mock objects

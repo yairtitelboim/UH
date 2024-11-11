@@ -9,11 +9,11 @@ class LayoutOptimizer:
     def __init__(self, floor_height: float = 3.5):
         self.floor_height = floor_height
         
-    def _group_windows(self, windows: List[Dict]) -> Dict[str, List[Dict]]:
+    def _group_windows(self, windows):
         grouped = defaultdict(list)
         for window in windows:
-            floor = window['y'] // self.floor_height
-            grouped[str(floor)].append(window)
+            floor_index = str(int(window['y'] / self.floor_height))
+            grouped[floor_index].append(window)
         return grouped
         
     def optimize_layout(self, floorplate, windows):
