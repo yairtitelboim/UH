@@ -4,6 +4,7 @@ env/
 ENV/
 .env
 .venv
+venv_new/
 
 # Python
 __pycache__/
@@ -56,4 +57,22 @@ atlas.egg-info/
 
 # Force include
 !.gitignore
+
+# Python cache files
+*.pyc
+*.pyo
+*.pyd
+
+# Test and cache directories
+.pytest_cache/
+cache/
+test_logs/
+metrics/
+atlas/test_logs/
+atlas/core/test_tracking/
+
+# Local development files
+.python-version
+.hintrc
+benchmark_output.json
 

@@ -4,6 +4,7 @@ import pdfplumber
 from atlas.clients.unstructured import UnstructuredClient
 from atlas.core.config import AIConfig
 import asyncio
+from atlas.core.metrics_wrapper import track_api_error, track_request
 
 logger = logging.getLogger(__name__)
 

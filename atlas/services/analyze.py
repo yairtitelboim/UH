@@ -1,6 +1,7 @@
 from typing import Dict, Any
 from atlas.core.config import AIConfig
-from atlas.core.metrics import PropertyMetricsExtractor
+from atlas.core.metrics_wrapper import track_api_error, track_latency
+from atlas.services.metrics import PropertyMetricsExtractor
 
 class AnalysisService:
     """Service for analyzing property data."""

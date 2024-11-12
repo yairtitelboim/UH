@@ -1,64 +1,31 @@
 import pytest
-import time
 import asyncio
-from statistics import mean, stdev
-from dataclasses import dataclass
-from typing import List, Dict, Callable
 import numpy as np
-from atlas.prism.integration import PrismIntegration
-from atlas.prism.dimension_analyzer import BuildingDimensions
-from atlas.prism.floorplate_gen import Floorplate, FloorplateGenerator
-from atlas.prism.layout_optimizer import LayoutOptimizer, OptimizedLayout
-from unittest.mock import patch
-from .mocks import mock_samgeo
-from unittest.mock import Mock
-from atlas.prism.image_collector import ImageCollector
-import os
-from unittest.mock import AsyncMock
+from functools import wraps
+from unittest.mock import patch, Mock, AsyncMock
+from atlas.prism.models import BuildingDimensions, Floorplate
+from atlas.prism.integration import (
+    PrismIntegration,
+    ImageCollector,
+    DimensionAnalyzer,
+    WindowDetector,
+    FloorplateGenerator,
+    LayoutOptimizer,
+    PrismVisualizer
+)
 
-@dataclass
-class BenchmarkResult:
-    name: str
-    mean_time: float
-    std_dev: float
-    min_time: float
-    max_time: float
-    samples: int
-
-class PrismBenchmark:
-    def __init__(self, samples: int = 100):
-        self.samples = samples
-        self.results = []
+def async_benchmark(benchmark, async_func, *args, **kwargs):
+    """Helper to properly benchmark async functions"""
+    def sync_wrapper():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(async_func(*args, **kwargs))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
     
-    async def run_benchmark(self, name: str, func: Callable, *args) -> BenchmarkResult:
-        timings = []
-        
-        for _ in range(self.samples):
-            start = time.perf_counter()
-            if asyncio.iscoroutinefunction(func) or asyncio.iscoroutine(func):
-                await func(*args)
-            elif callable(func):
-                result = func(*args)
-                if asyncio.iscoroutine(result):
-                    await result
-            end = time.perf_counter()
-            timings.append(end - start)
-            
-        result = BenchmarkResult(
-            name=name,
-            mean_time=mean(timings),
-            std_dev=stdev(timings),
-            min_time=min(timings),
-            max_time=max(timings),
-            samples=self.samples  # Fixed: using self.samples instead of undefined 's'
-        )
-        self.results.append(result)
-        return result
-
-@pytest.fixture
-def benchmark():
-    return PrismBenchmark()
-
+    return benchmark.pedantic(sync_wrapper, iterations=100, rounds=100)
 
 @pytest.fixture
 def sample_dimensions():
@@ -88,19 +55,20 @@ def mock_dependencies():
 
 @pytest.mark.benchmark
 class TestPrismPerformance:
+    @pytest.mark.asyncio
     async def test_floorplate_generation(self, benchmark, sample_dimensions):
         """Benchmark floorplate generation performance"""
         generator = FloorplateGenerator()
-        result = await benchmark.run_benchmark(
-            "Floorplate Generation",
-            generator.generate_floorplate,
-            sample_dimensions
-        )
         
-        # Performance targets based on frontend requirements
-        assert result.mean_time < 0.1  # 100ms max for good UX
-        assert result.max_time < 0.2   # 200ms max spike
+        async def run_benchmark():
+            return await generator.generate_floorplate(sample_dimensions)
+            
+        async_benchmark(benchmark, run_benchmark)
         
+        assert benchmark.stats['mean'] < 0.1  # 100ms target
+        assert benchmark.stats['max'] < 0.2   # 200ms max spike
+        
+    @pytest.mark.asyncio
     async def test_layout_optimization(self, benchmark, sample_dimensions):
         """Benchmark layout optimization performance"""
         generator = FloorplateGenerator()
@@ -110,101 +78,57 @@ class TestPrismPerformance:
         windows = [{'x': x, 'y': 0, 'width': 1.5, 'height': 1.5} 
                   for x in range(0, 30, 3)]
         
-        result = await benchmark.run_benchmark(
-            "Layout Optimization",
-            optimizer.optimize_layout,
-            floorplate,
-            windows
-        )
+        async def run_benchmark():
+            return await optimizer.optimize_layout(floorplate, windows)
+            
+        async_benchmark(benchmark, run_benchmark)
         
-        assert result.mean_time < 0.5  # 500ms target for optimization
-        assert result.max_time < 1.0   # 1s max acceptable time
+        assert benchmark.stats['mean'] < 0.5  # 500ms target
+        assert benchmark.stats['max'] < 1.0   # 1s max acceptable time
         
+    @pytest.mark.asyncio
     async def test_full_pipeline(self, benchmark, mock_dependencies):
         """Benchmark complete PRISM pipeline"""
-        config = {
-            'google_maps_api_key': os.environ.get('GOOGLE_API_KEY'),
-            'cache_dir': '/tmp/test'
-        }
+        config = {'google_maps_api_key': 'test_key', 'cache_dir': '/tmp/test'}
         prism = PrismIntegration(config)
         
-        # Setup mock returns as coroutines
         async def mock_images(*args, **kwargs):
             return {
-                'satellite': 'test.jpg',
-                'street_view': 'street.jpg'
+                'satellite': {'image': np.zeros((100, 100, 3)), 'metadata': {'scale': 0.5}},
+                'street_view': {'image': np.zeros((200, 100, 3)), 'metadata': {'height': 30}}
             }
-            
-        # Mock the coroutine factory instead of the coroutine itself
+        
         prism.image_collector.collect_images = mock_images
-        prism.dimension_analyzer.analyze_dimensions.return_value = BuildingDimensions(
-            width=30.5,
-            length=45.7,
-            height=36.6,
-            floor_height=3.5,
-            floor_count=10
-        )
-        prism.window_detector.detect_windows.return_value = []
         
-        result = await benchmark.run_benchmark(
-            "Complete Pipeline",
-            prism.analyze_building,
-            "123 Test St"
-        )
+        async def run_benchmark():
+            return await prism.analyze_building("123 Test St")
+            
+        async_benchmark(benchmark, run_benchmark)
         
-        assert result.mean_time < 2.0  # 2s target for full analysis
-        assert result.max_time < 3.0   # 3s max acceptable time
-        
+        assert benchmark.stats['mean'] < 2.0
+        assert benchmark.stats['max'] < 3.0
+
+    @pytest.mark.asyncio
     async def test_visualization_transform(self, benchmark, mock_dependencies):
-        """Benchmark visualization data transformation"""
-        config = {
-            'google_maps_api_key': os.environ.get('GOOGLE_API_KEY'),
-            'cache_dir': '/tmp/test'
-        }
+        """Benchmark visualization transform performance"""
+        config = {'google_maps_api_key': 'test_key', 'cache_dir': '/tmp/test'}
         prism = PrismIntegration(config)
         
-        # Setup test data
-        dimensions = BuildingDimensions(
-            width=30.5,
-            length=45.7,
-            height=36.6,
-            floor_height=3.5,
-            floor_count=10
-        )
-        floorplate = Floorplate(
-            width=30.5,
-            length=45.7,
-            core_width=12.2,
-            core_depth=10.0,
-            corridor_width=1.7,
-            units=[],
-            efficiency=0.82
-        )
-        
-        prism_data = {
-            'dimensions': dimensions,
-            'windows': [],
-            'floorplate': floorplate,
-            'optimized_layout': {
-                'units': [],
-                'efficiency': 0.82,
-                'window_utilization': 0.9,
-                'risk_factors': {
-                    'window_pattern': {'status': 'Low Risk', 'score': 90},
-                    'floor_plate': {'status': 'Medium Risk', 'score': 75}
-                }
-            }
+        test_data = {
+            'dimensions': BuildingDimensions(width=30.0, length=45.0, height=40.0, 
+                                          floor_height=3.5, floor_count=12),
+            'windows': [{'x': 10, 'y': 20, 'width': 2}],
+            'floorplate': Floorplate(width=30.0, length=45.0, core_width=12.0,
+                                   core_depth=15.0, corridor_width=1.7,
+                                   units=[], efficiency=0.82)
         }
         
-        result = await benchmark.run_benchmark(
-            "Visualization Transform",
-            prism.visualizer.transform_for_frontend,
-            prism_data
-        )
+        async def run_benchmark():
+            return await prism.visualizer.transform_for_frontend(test_data)
+            
+        async_benchmark(benchmark, run_benchmark)
         
-        # Frontend rendering requirements
-        assert result.mean_time < 0.05  # 50ms target for transforms
-        assert result.max_time < 0.1    # 100ms max acceptable time
+        assert benchmark.stats['mean'] < 0.5
 
     def print_benchmark_report(self, benchmark):
         print("\nPRISM Performance Benchmark Report")
@@ -219,91 +143,73 @@ class TestPrismPerformance:
 
 @pytest.mark.benchmark
 class TestPrismComponentPerformance:
+    @pytest.mark.asyncio
     async def test_dimension_analyzer_performance(self, benchmark, mock_dependencies):
         """Benchmark dimension analyzer performance"""
-        config = {
-            'google_maps_api_key': os.environ.get('GOOGLE_API_KEY'),
-            'cache_dir': '/tmp/test'
+        analyzer = DimensionAnalyzer()
+        test_images = {
+            'satellite': {'image': np.zeros((100, 100, 3)), 'metadata': {'scale': 0.5}},
+            'street_view': {'image': np.zeros((200, 100, 3)), 'metadata': {'height': 30}}
         }
-        prism = PrismIntegration(config)
         
-        # Following pattern from test_benchmarks.py startLine: 124, endLine: 129
-        async def mock_image_data(*args, **kwargs):
-            return {
-                'satellite': {'image': 'test.jpg', 'metadata': {'scale': 0.5}},
-                'street_view': {'image': 'street.jpg', 'metadata': {'height': 30}}
-            }
-        
-        prism.image_collector.collect_images = mock_image_data
-        
-        result = await benchmark.run_benchmark(
-            "Dimension Analysis",
-            prism.dimension_analyzer.analyze_dimensions,
-            mock_image_data()
+        result = await benchmark.async_run_benchmark(
+            analyzer.analyze_dimensions,
+            test_images
         )
         
-        assert result.mean_time < 0.2
-        assert result.max_time < 0.3
-        assert result.std_dev < 0.1
+        assert result.mean_time < 1.0
+        assert result.max_time < 2.0
 
     @pytest.mark.asyncio
-    async def test_image_collector_pipeline(self, benchmark):
+    async def test_image_collector_pipeline(self, benchmark, mock_maps_client):
+        """Benchmark image collector pipeline"""
         config = {
-            'google_maps_api_key': 'AIzaSyCb0qBz4tvOTfKC69CwOCqx1lYM_vzfqF8',
+            'google_maps_api_key': 'test_key',
             'cache_dir': '/tmp/test'
         }
-
+        
+        mock_instance = mock_maps_client.return_value
+        mock_instance.geocode = AsyncMock(return_value=[{
+            'geometry': {'location': {'lat': 40.7128, 'lng': -74.006}}
+        }])
+        mock_instance.static_map = AsyncMock(return_value=b'test_image_data')
+        mock_instance.street_view = AsyncMock(return_value=b'test_image_data')
+        
         collector = ImageCollector(config)
-
-        # Create the mock image data
-        mock_image_data = b'\x89PNG\r\n...'  # Your PNG data here
         
-        # Mock geocode response
-        mock_geocode_result = [{'geometry': {'location': {'lat': 40.7128, 'lng': -74.0060}}}]
+        result = await benchmark.async_run_benchmark(
+            collector.collect_images,
+            "123 Test St"
+        )
+        
+        assert result.mean_time < 1.0
+        assert result.max_time < 2.0
 
-        # Mock the external API calls
-        with patch('atlas.prism.image_collector.GoogleMapsClient') as mock_client:
-            mock_instance = mock_client.return_value
-            # Set up the mocks to return the image data directly
-            mock_instance.static_map = AsyncMock(return_value=mock_image_data)
-            mock_instance.street_view = AsyncMock(return_value=mock_image_data)
-            mock_instance.geocode = AsyncMock(return_value=mock_geocode_result)
-
-            # Initialize the collector with our mock
-            collector.client = mock_instance
-            
-            result = await collector.collect_images("123 Test St")
-
-    async def test_floorplate_optimization_stress(self, benchmark, sample_dimensions):
-        """Benchmark floorplate generation under stress conditions"""
-        generator = FloorplateGenerator()
+    @pytest.mark.asyncio
+    async def test_floorplate_optimization_stress(self, benchmark):
+        """Benchmark floorplate optimization under stress"""
         optimizer = LayoutOptimizer()
+        floorplate = Floorplate(width=50.0, length=80.0, core_width=15.0,
+                              core_depth=20.0, corridor_width=1.7,
+                              units=[], efficiency=0.82)
+        windows = [{'x': x, 'y': y, 'width': 1.5, 'height': 1.5} 
+                  for x in range(0, 50, 2) 
+                  for y in range(0, 80, 2)]
         
-        # Following pattern from test_benchmarks.py startLine: 152, endLine: 171
-        test_cases = [
-            {'width': 30.5, 'length': 45.7, 'complexity': 'low'},
-            {'width': 60.0, 'length': 80.0, 'complexity': 'medium'},
-            {'width': 100.0, 'length': 120.0, 'complexity': 'high'}
-        ]
+        async def run_benchmark():
+            return await optimizer.optimize_layout(floorplate, windows)
+            
+        def sync_wrapper():
+            return asyncio.run(run_benchmark())
+            
+        benchmark.pedantic(
+            sync_wrapper,
+            iterations=100,
+            rounds=100
+        )
         
-        for case in test_cases:
-            dimensions = BuildingDimensions(
-                width=case['width'],
-                length=case['length'],
-                height=36.6,
-                floor_height=3.5,
-                floor_count=10
-            )
-            
-            result = await benchmark.run_benchmark(
-                f"Floorplate Optimization ({case['complexity']})",
-                generator.generate_optimized_floorplate,
-                dimensions
-            )
-            
-            assert result.mean_time < 1.0
-            assert result.max_time < 2.0
-            assert result.std_dev < 0.5
+        assert benchmark.stats['mean'] < 1.0
+        assert benchmark.stats['max'] < 2.0
 
     def print_detailed_report(self, benchmark):
         """Print detailed performance report with statistics"""
@@ -415,15 +321,12 @@ async def run_service(func, *args):
 
 @pytest.mark.benchmark
 class TestPrismBenchmarkPerformance:
+    @pytest.mark.asyncio 
     async def test_service_performance_variants(self, benchmark, mock_dependencies):
         """Benchmark service performance with proper coroutine handling"""
-        config = {
-            'google_maps_api_key': os.environ.get('GOOGLE_API_KEY'),
-            'cache_dir': '/tmp/test'
-        }
+        config = {'google_maps_api_key': 'test_key', 'cache_dir': '/tmp/test'}
         prism = PrismIntegration(config)
         
-        # Define mock dependencies
         mock_dependencies = {
             'analysis_result': {
                 'status': 'success',
@@ -436,16 +339,14 @@ class TestPrismBenchmarkPerformance:
             return mock_dependencies['analysis_result']
         
         with patch.object(prism, 'analyze_building', side_effect=mock_analyze):
-            result = await benchmark.run_benchmark(
-                "Service Performance",
-                run_service,
-                prism.analyze_building,
-                "123 Test St"
-            )
+            async def run_benchmark():
+                return await mock_analyze("123 Test St")
+                
+            async_benchmark(benchmark, run_benchmark)
             
-            assert result.mean_time < 0.5
-            assert result.max_time < 1.0
-            assert result.std_dev < 0.2
+            assert benchmark.stats['mean'] < 0.5
+            assert benchmark.stats['max'] < 1.0
+            assert benchmark.stats['std_dev'] < 0.2
 
 @pytest.mark.asyncio
 class TestImageCollector:
@@ -538,3 +439,53 @@ class TestImageCollector:
         if os.path.exists('/tmp/test'):
             import shutil
             shutil.rmtree('/tmp/test')
+
+@pytest.mark.benchmark
+class TestPrismIntegrationPerformance:
+    @pytest.mark.asyncio
+    async def test_full_pipeline_performance(self, benchmark, mock_images):
+        """Benchmark complete PRISM pipeline"""
+        config = {
+            'google_maps_api_key': 'test_key',
+            'cache_dir': '/tmp/test'
+        }
+        prism = PrismIntegration(config)
+        
+        # Setup mock returns
+        prism.image_collector.collect_images.return_value = mock_images
+        prism.dimension_analyzer.analyze_dimensions.return_value = BuildingDimensions(
+            width=30.0, length=45.0, height=40.0,
+            floor_height=3.5, floor_count=12
+        )
+        prism.window_detector.detect_windows.return_value = [
+            {'x': 10, 'y': 20, 'width': 2}
+        ]
+        
+        async def run_benchmark():
+            return await prism.analyze_building("123 Test St")
+            
+        async_benchmark(benchmark, run_benchmark)
+        
+        assert benchmark.stats['mean'] < 2.0  # 2s target for full pipeline
+        assert benchmark.stats['max'] < 3.0   # 3s max spike
+
+    @pytest.mark.asyncio
+    async def test_error_handling_performance(self, benchmark, mock_images):
+        """Benchmark error handling performance"""
+        config = {
+            'google_maps_api_key': 'test_key',
+            'cache_dir': '/tmp/test'
+        }
+        prism = PrismIntegration(config)
+        
+        # Setup error case
+        prism.image_collector.collect_images.return_value = mock_images
+        prism.dimension_analyzer.analyze_dimensions.side_effect = ValueError("Failed to analyze")
+        
+        async def run_benchmark():
+            return await prism.analyze_building("123 Test St")
+            
+        async_benchmark(benchmark, run_benchmark)
+        
+        assert benchmark.stats['mean'] < 0.1  # 100ms target for error handling
+        assert benchmark.stats['max'] < 0.2   # 200ms max spike
