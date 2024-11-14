@@ -1,4 +1,4 @@
-from atlas.tools.test_analysis import BenchmarkAnalyzer
+from atlas.runner.test_analysis import BenchmarkAnalyzer
 
 def main():
     analyzer = BenchmarkAnalyzer()

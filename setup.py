@@ -14,6 +14,7 @@ setup(
         'pandas==2.1.0',
         'numpy==1.24.0',
         'backoff==2.2.1',
-        'prometheus-client==0.17.1'
+        'prometheus-client==0.17.1',
+        'httpx==0.27.0'
     ]
 ) 

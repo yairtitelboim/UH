@@ -1,11 +1,11 @@
-from samgeo import SAMModel
+from segment_geospatial import SAMGeo  # type: ignore
 import numpy as np
 from typing import Dict, Any
 from .models import BuildingDimensions
 
 class DimensionAnalyzer:
     def __init__(self):
-        self.sam_model = SAMModel()
+        self.sam_model = SAMGeo()
         self.reference_objects = {
             'parking_spot': 2.5,  # meters
             'car_length': 4.5,    # meters
@@ -18,7 +18,8 @@ class DimensionAnalyzer:
         if not images or 'satellite' not in images or 'street_view' not in images:
             raise ValueError("Missing required image data")
             
-        if not images['satellite'].get('image') or not images['street_view'].get('image'):
+        if not isinstance(images['satellite'].get('image'), np.ndarray) or \
+           not isinstance(images['street_view'].get('image'), np.ndarray):
             raise ValueError("Invalid image data")
 
         satellite_dims = await self._analyze_satellite(images['satellite'])

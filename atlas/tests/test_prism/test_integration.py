@@ -55,28 +55,19 @@ async def test_analyze_building_layout_optimizer_error(prism, mock_images):
 
 @pytest.mark.asyncio
 async def test_analyze_building_success(prism, mock_images):
-    # Set up return values for each component
     dimensions = BuildingDimensions(
-        width=30.0,
-        length=40.0,
-        height=35.0,
-        floor_height=3.5,
-        floor_count=10
+        width=30.0, length=40.0, height=35.0,
+        floor_height=3.5, floor_count=10
     )
     
     floorplate = Floorplate(
-        width=30.0,
-        length=40.0,
-        core_width=12.2,
-        core_depth=12.2,
-        corridor_width=1.7,
-        units=[],
-        efficiency=0.85
+        width=30.0, length=40.0,
+        core_width=12.2, core_depth=12.2,
+        corridor_width=1.7, units=[], efficiency=0.85
     )
     
     optimized_layout = OptimizedLayout(
-        units=[],
-        efficiency=0.85,
+        units=[], efficiency=0.85,
         window_utilization=0.9,
         risk_factors={'window_pattern': {'status': 'Low Risk', 'score': 90}}
     )

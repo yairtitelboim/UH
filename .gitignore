@@ -78,3 +78,5 @@ atlas/core/test_tracking/
 .hintrc
 benchmark_output.json
 
+atlas/FinCore/
+atlas/FinCore/
