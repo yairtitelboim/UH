@@ -3,12 +3,12 @@ import numpy as np
 from .models import PhysicalMetric, OptimizedLayout, UnitMixMetric
 
 class PrismVisualizer:
-    def transform_for_frontend(self, prism_data):
+    async def transform_for_frontend(self, prism_data):
         return {
-            'physical_metrics': self._transform_metrics(prism_data),
-            'unit_mix': self._transform_unit_mix(prism_data),
-            'floorplan': self._transform_floorplan(prism_data),
-            'risk_assessment': self._transform_risk_assessment(prism_data)
+            'physical_metrics': await self._transform_metrics(prism_data),
+            'unit_mix': await self._transform_unit_mix(prism_data),
+            'floorplan': await self._transform_floorplan(prism_data),
+            'risk_assessment': await self._transform_risk_assessment(prism_data)
         }
     
     def _transform_metrics(self, data) -> List[PhysicalMetric]:

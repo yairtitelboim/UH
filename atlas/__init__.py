@@ -3,7 +3,8 @@ import logging
 from datetime import datetime
 from atlas.core.config import AIConfig
 from atlas.core.logging import setup_logging
-from atlas.core.metrics import setup_metrics, track_request, track_latency, track_api_error
+from atlas.core.metrics_wrapper import setup_metrics, track_request, track_latency, track_api_error
+
 from atlas.services.search import SearchService
 from atlas.services.process import PropertyProcessor
 from atlas.services.analyze import AnalysisService

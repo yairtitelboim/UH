@@ -3,7 +3,7 @@ import asyncio
 import logging
 from atlas.core.config import AIConfig
 from atlas.core.logging import setup_logging
-from atlas.core.metrics import track_api_error
+from atlas.core.metrics_wrapper import track_api_error
 from atlas.clients import TavilyClient, SerperClient, SerpApiClient
 
 logger = logging.getLogger(__name__)

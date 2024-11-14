@@ -1,11 +1,11 @@
-from samgeo import SAMModel
+from segment_geospatial import SAMGeo  # type: ignore
 import numpy as np
 from typing import Dict, Any
 from .models import BuildingDimensions
 
 class DimensionAnalyzer:
     def __init__(self):
-        self.sam_model = SAMModel()
+        self.sam_model = SAMGeo()
         self.reference_objects = {
             'parking_spot': 2.5,  # meters
             'car_length': 4.5,    # meters
@@ -18,7 +18,8 @@ class DimensionAnalyzer:
         if not images or 'satellite' not in images or 'street_view' not in images:
             raise ValueError("Missing required image data")
             
-        if not images['satellite'].get('image') or not images['street_view'].get('image'):
+        if not isinstance(images['satellite'].get('image'), np.ndarray) or \
+           not isinstance(images['street_view'].get('image'), np.ndarray):
             raise ValueError("Invalid image data")
 
         satellite_dims = await self._analyze_satellite(images['satellite'])
@@ -98,24 +99,20 @@ class DimensionAnalyzer:
                 detected_objects[obj_type] = mask
         return detected_objects
 
-    def _detect_window_rows(self, image: np.ndarray) -> np.ndarray:
-        """Detect horizontal rows of windows in the facade."""
-        # Convert to binary image if not already
+    def _detect_window_rows(self, image):
+        # Ensure image is 2D
         if len(image.shape) > 2:
             image = np.mean(image, axis=2)
-        binary = image > np.mean(image)
         
-        # Get horizontal projection
+        # Apply threshold
+        threshold = np.mean(image) + np.std(image)
+        binary = image > threshold
+        
+        # Calculate horizontal projection
         projection = np.sum(binary, axis=1)
         
-        # Find peaks in projection (window rows)
-        window_rows = []
-        threshold = np.mean(projection) + np.std(projection)
+        # Find peaks in projection
+        from scipy.signal import find_peaks
+        peaks, _ = find_peaks(projection, height=np.max(projection)/3)
         
-        for i in range(1, len(projection) - 1):
-            if (projection[i] > threshold and 
-                projection[i] > projection[i-1] and 
-                projection[i] > projection[i+1]):
-                window_rows.append(i)
-        
-        return np.array(window_rows)
+        return peaks

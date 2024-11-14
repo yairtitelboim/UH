@@ -1,9 +1,13 @@
 import os
 from dataclasses import dataclass
-from dotenv import load_dotenv
 from typing import Optional
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    def load_dotenv():
+        print("Warning: python-dotenv not installed. Using raw environment variables.")
 
 @dataclass
 class AIConfig:

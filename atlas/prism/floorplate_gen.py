@@ -112,3 +112,32 @@ class FloorplateGenerator:
             
         # Select largest unit that fits
         return max(suitable_units, key=lambda u: u.width)
+
+    async def generate_optimized_floorplate(self, dimensions: BuildingDimensions) -> Floorplate:
+        """Generate optimized floorplate with retries"""
+        floorplate = self.generate_floorplate(dimensions)
+        
+        # Optimize for efficiency
+        if floorplate.efficiency < 0.75:
+            # Try alternative core placement
+            core_dims = self._calculate_core_dimensions(dimensions.width * dimensions.length * 0.15)
+            units = self._generate_unit_layout(
+                dimensions.width,
+                dimensions.length,
+                core_dims['width'],
+                core_dims['length']
+            )
+            efficiency = sum(u['area'] for u in units) / (dimensions.width * dimensions.length)
+            
+            if efficiency > floorplate.efficiency:
+                floorplate = Floorplate(
+                    width=dimensions.width,
+                    length=dimensions.length,
+                    core_width=core_dims['width'],
+                    core_depth=core_dims['length'],
+                    corridor_width=self.corridor_width,
+                    units=units,
+                    efficiency=efficiency
+                )
+        
+        return floorplate
