@@ -3,7 +3,6 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import BuildingPopup from './BuildingPopup';
 import { createRoot } from 'react-dom/client';
-import { DC_BOUNDS } from './constants';
 
 // Add this line to set the access token
 mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
