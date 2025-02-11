@@ -260,7 +260,6 @@ class TestPrismComponentCoverage:
     async def test_image_collector_scenarios(self, benchmark):
         """Test image collector with different API responses"""
         config = {
-            'google_maps_api_key': 'AIzaSyCb0qBz4tvOTfKC69CwOCqx1lYM_vzfqF8',  # Updated from YOUR_VALID_API_KEY
             'cache_dir': '/tmp/test'
         }
         prism = PrismIntegration(config)
