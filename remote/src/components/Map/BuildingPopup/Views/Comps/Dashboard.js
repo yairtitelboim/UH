@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { AlertTriangle, Zap, Trophy } from 'lucide-react';
 import DCFAnalysis from './CashFlow'; // Import the CashFlow component
 import FinancialAnalysis from './DCF'; // Import the DCF component
 
-const MasterMetrics = () => {
+const MasterMetrics = ({ 
+  onCogentClick, 
+  cogentActive, 
+  buildingData,
+  buildingType
+}) => {
   const criticalFactors = {
     redFlags: [
       { factor: "Market Absorption", score: 65, threshold: 80, impact: -2.5 },
@@ -25,13 +30,15 @@ const MasterMetrics = () => {
 
   return (
     <div className="bg-black text-white mt-2 p-2 rounded-lg">
-      {/* Render the CashFlow component first */}
-      <DCFAnalysis />
+      <DCFAnalysis 
+        onCogentClick={onCogentClick}
+        cogentActive={cogentActive}
+        buildingData={buildingData}
+        buildingType={buildingType}
+      />
 
-      {/* Render the DCF component next */}
       <FinancialAnalysis />
 
-      {/* Existing content in Dashboard.js */}
       <div className="grid grid-cols-1 gap-2 mt-4 mb-1">
         <div className="bg-red-900/30 p-4 rounded border border-red-500">
           <div className="flex items-center justify-between mb-2">

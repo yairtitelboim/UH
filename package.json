@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "start": "react-scripts start",
+    "server": "node server.js",
+    "dev": "concurrently \"npm run server\" \"npm run start\""
+  },
+  "proxy": {
+    "/v1": {
+      "target": "https://api.anthropic.com",
+      "changeOrigin": true,
+      "secure": false
+    }
+  }
+} 

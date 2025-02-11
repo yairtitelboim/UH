@@ -1,3 +1,5 @@
+import styled from 'styled-components';
+
 export const mapStyles = `
   .custom-marker {
     transform: translate(-50%, -50%);
@@ -12,6 +14,7 @@ export const mapStyles = `
   .mapboxgl-popup {
     max-width: 400px;
     font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+    z-index: 3000 !important;
   }
 
   .mapboxgl-popup-content {
@@ -122,5 +125,25 @@ export const mapStyles = `
 
   .power-grid-marker.building-connection:hover {
     background-color: rgba(76, 175, 80, 0.8);
+  }
+`;
+
+export const MapContainer = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  .callout-annotation {
+    cursor: default;
+    
+    &:hover {
+      z-index: 2;
+    }
+  }
+
+  .mapboxgl-marker {
+    z-index: 1;
   }
 `;

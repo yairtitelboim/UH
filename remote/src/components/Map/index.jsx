@@ -1,1388 +1,1772 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import BuildingPopup from './BuildingPopup';
-import PropTypes from 'prop-types';
 import { createRoot } from 'react-dom/client';
-import { useMapAnimation } from './hooks/useMapAnimation';
-import FloatingCard from './components/FloatingCard';
-import { MAP_CONFIG, POWER_GRID_LOCATIONS } from './hooks/mapConstants';
-import { dcData } from './utils/mockDataGenerator';
+import { MAP_CONFIG, BUILDING_COLORS } from './constants';
+import { brickellGEOIDs } from './constants/geoIds';
+import { 
+    initializeParticleLayers, 
+    initializePowerGrid, 
+    animateParticles,
+    initializeGEOIDParticleLayers,
+    animateGEOIDParticles,
+    transitionToGridView,
+    stopGEOIDAnimation
+} from './hooks/mapAnimations';
+import { hexGrid, booleanPointInPolygon } from '@turf/turf';
+import { analyzeCensusData } from './hooks/useCensusData';
+import { AINavigator } from './hooks/useAINavigator';
+import { askClaude, parseClaudeResponse } from '../../services/claude';
+import styled from 'styled-components';
+import AIChatPanel from './AIChatPanel';
+import { 
+    addGeoIdTags,
+    setupAnimation,
+    initializeMap,
+    createPOIToggle,
+    setupMapEventListeners,
+    highlightPOIBuildings,
+    calculateBuildingArea
+} from './utils';
+import { initializePOILayers, applyPOIHighlights } from './layers/POILayers';
 
+// Add this line to set the access token
 mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
 
-const MapComponent = (props) => {
-    const mapContainer = useRef(null);
-    const map = useRef(null);
-    
-    // Get animation controls from the hook
-    const { startAnimation, stopAnimation, initializeParticleLayers } = useMapAnimation(map);
-    
-    const buildingStates = useRef(new Map());
-    const [selectedBuilding, setSelectedBuilding] = useState(null);
-    const [cogentActive, setCogentActive] = useState(false);
-    const [cogentHighlight, setCogentHighlight] = useState(null);
+const MapContainer = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 
-    // Define initializeLayersAndAnimation
-    const initializeLayersAndAnimation = useCallback(() => {
-        if (!map.current) return;
+  .callout-annotation {
+    cursor: default;
+    
+    &:hover {
+      z-index: 2;
+    }
+  }
 
-        // Add 3D buildings layer
-        if (!map.current.getLayer('3d-buildings')) {
-            map.current.addLayer({
-                'id': '3d-buildings',
-                'source': 'composite',
-                'source-layer': 'building',
-                'type': 'fill-extrusion',
-                'minzoom': 12,
-                'paint': {
-                    'fill-extrusion-color': [
-                        'case',
-                        ['boolean', ['feature-state', 'isGreen'], false],
-                        '#51ff00',
-                        '#1a1a1a'
-                    ],
-                    'fill-extrusion-height': ['get', 'height']
-                }
-            });
+  .mapboxgl-marker {
+    z-index: 1;
+  }
+
+  .custom-popup .mapboxgl-popup-content {
+    background: none;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .custom-popup .mapboxgl-popup-close-button {
+    color: white;
+    font-size: 16px;
+    padding: 4px 8px;
+    right: 4px;
+    top: 4px;
+  }
+
+  .custom-popup .mapboxgl-popup-tip {
+    display: none;
+  }
+`;
+
+// First, move mapState outside the component to make it truly global
+const mapState = {
+  clickState: {
+    isHandlingClick: false,
+    lastClickTime: 0,
+    blockAllClicks: false,
+    blockZoom: false
+  }
+};
+
+const MapComponent = () => {
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  
+  // TODO: Clean up these refs and states in future PRs
+  const popupRef = useRef(null);
+  const frameCount = useRef(0);
+  const lastAnimationTime = useRef(0);
+  const animationFrame = useRef(null);
+  const buildingStates = useRef(new Map());
+  const isAnimating = useRef(false);
+  const previouslyHighlightedSubdivision = useRef(null);
+  const previouslyHighlightedPMT = useRef(null);
+  const [aiAnalysisMode, setAiAnalysisMode] = useState(false);
+  const [aiNavigator, setAiNavigator] = useState(null);
+  const [analysisPrompt, setAnalysisPrompt] = useState('');
+  const [aiResponse, setAiResponse] = useState('');
+  const [hoverPopup, setHoverPopup] = useState(null);
+  const aiControlRef = useRef(null);
+  const previousHighlight = useRef([]);
+  const [inputValue, setInputValue] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [showPOIMarkers, setShowPOIMarkers] = useState(true);
+  const highlightedBuildingsData = useRef(null);
+  const zoomHandler = useRef(null);
+  const moveHandler = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Processing...');
+  const [isSelectingArea, setIsSelectingArea] = useState(false);
+  const poiToggleRef = useRef(null);
+  const currentFilter = useRef(null);
+  const [poiLayerInitialized, setPoiLayerInitialized] = useState(false);
+  const [isGeoIDVisible, setIsGeoIDVisible] = useState(false);
+  const [geoIdAnimationFrame, setGeoIdAnimationFrame] = useState(null);
+  const [clickHandlerInitialized, setClickHandlerInitialized] = useState(false);
+
+  const loadingMessages = [
+    "Analyzing spatial data...",
+    "Processing urban patterns...",
+    "Calculating density metrics...",
+    "Mapping neighborhood features...",
+    "Evaluating development zones..."
+  ];
+
+  useEffect(() => {
+    let messageInterval;
+    if (isLoading) {
+      let index = 0;
+      setLoadingMessage(loadingMessages[0]); // Set initial message
+      messageInterval = setInterval(() => {
+        index = (index + 1) % loadingMessages.length;
+        setLoadingMessage(loadingMessages[index]);
+      }, 2000);
+    }
+    return () => clearInterval(messageInterval);
+  }, [isLoading]);
+
+  const handleQuestion = async (question) => {
+    // Clear any existing circle selection
+    if (map.current) {
+      try {
+        // Check if the layer exists before trying to modify it
+        if (map.current.getLayer('area-circle')) {
+          map.current.setLayoutProperty('area-circle', 'visibility', 'none');
         }
-
-        startAnimation();
-    }, [map, startAnimation]);
-
-    // Handle map click events
-    const handleMapClick = useCallback((e) => {
-      if (!map.current) return;
-      
-      const features = map.current.queryRenderedFeatures(e.point, {
-        layers: ['3d-buildings']
-      });
-      
-      if (features.length > 0) {
-        const feature = features[0];
-        
-        // Create a proper article structure
-        const buildingArticle = {
-          location: {
-            address: feature.properties.address || 'Unknown Address',
-            neighborhood: feature.properties.neighborhood || '',
-            city: feature.properties.city || 'Washington',
-            state: feature.properties.state || 'DC'
-          },
-          properties: feature.properties || {}
-        };
-        
-        // Set the clicked building as selected
-        setSelectedBuilding(buildingArticle);
+        setIsSelectingArea(false);
+      } catch (error) {
+        console.warn('Error handling layer visibility:', error);
       }
-    }, []);
+    }
 
-    // First useEffect for map initialization
-    useEffect(() => {
-        if (!map.current) {
-            map.current = new mapboxgl.Map({
-                container: mapContainer.current,
-                style: 'mapbox://styles/mapbox/dark-v10',
-                center: [-77.0369, 38.9072],
-                zoom: 12,
-                pitch: 45
-            });
+    setIsLoading(true);
+    setMessages(prev => [...prev, { isUser: true, content: question }]);
 
-            map.current.on('load', () => {
-                console.log('Map style loaded, initializing layers...');
-                initializeParticleLayers();
-                initializeLayersAndAnimation();
-                map.current.triggerRepaint();
-                console.log('Layer initialization complete');
-            });
+    try {
+      const bounds = map.current.getBounds();
+      const mapBounds = {
+        sw: bounds.getSouthWest(),
+        ne: bounds.getNorthEast()
+      };
+
+      // Get response from Claude service
+      const response = await askClaude(question, {}, mapBounds);
+      const parsedResponse = parseClaudeResponse(response);
+
+      if (parsedResponse.mainText !== "Could not process the response. Please try again.") {
+        setMessages(prev => [...prev, {
+          isUser: false,
+          content: parsedResponse
+        }]);
+        
+        // Handle map navigation and highlighting
+        handleLLMResponse(parsedResponse);
+      } else {
+        throw new Error('Failed to parse response');
+      }
+    } catch (error) {
+      console.error('Error in handleQuestion:', error);
+      setMessages(prev => [...prev, {
+        isUser: false,
+        content: {
+          mainText: "I apologize, but I encountered an error processing your request. Please try asking your question again.",
+          poiInfo: null,
+          followUps: []
         }
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-        return () => {
-            if (map.current) {
-                map.current.remove();
+  const initializeLayers = useCallback(async () => {
+    try {
+      // Add heat map layer before 3D buildings
+      map.current.addLayer({
+        'id': 'poi-heat',
+        'type': 'heatmap',
+        'source': {
+          'type': 'geojson',
+          'data': {
+            'type': 'FeatureCollection',
+            'features': []
+          }
+        },
+        'paint': {
+          // Increase the heatmap weight based on POI count
+          'heatmap-weight': [
+            'interpolate',
+            ['linear'],
+            ['get', 'poiCount'],
+            1, 0.5,
+            5, 1
+          ],
+          // Increase the heatmap color weight by zoom level
+          'heatmap-intensity': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            12, 0.5,
+            15, 1.5
+          ],
+          // Color gradient from orange to red
+          'heatmap-color': [
+            'interpolate',
+            ['linear'],
+            ['heatmap-density'],
+            0, 'rgba(255,103,0,0)',
+            0.2, 'rgba(255,103,0,0.2)',
+            0.4, 'rgba(255,103,0,0.4)',
+            0.6, 'rgba(255,103,0,0.6)',
+            0.8, 'rgba(255,103,0,0.8)',
+            1, 'rgba(255,0,0,1)'
+          ],
+          // Adjust the heatmap radius by zoom level
+          'heatmap-radius': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            12, 15,
+            15, 25
+          ],
+          'heatmap-opacity': 0.7
+        }
+      }, 'miami-pois'); // Add before POI layer
+
+      // Add 3D buildings layer
+      if (!map.current.getLayer('3d-buildings')) {
+        map.current.addLayer({
+          'id': '3d-buildings',
+          'source': 'composite',
+          'source-layer': 'building',
+          'filter': ['==', 'extrude', 'true'],
+          'type': 'fill-extrusion',
+          'minzoom': 12,
+          'paint': {
+            'fill-extrusion-color': [
+              'case',
+              ['boolean', ['feature-state', 'isHighlighted'], false],
+              '#00A5FF',  // Bright blue for highlighted building
+              ['boolean', ['feature-state', 'isGreen'], false],
+              BUILDING_COLORS.BRIGHT_GREEN,
+              ['boolean', ['feature-state', 'inPowerGrid'], false],
+              [
+                'interpolate',
+                ['linear'],
+                ['feature-state', 'yellowIntensity'],
+                0, BUILDING_COLORS.YELLOW_FAR,
+                0.5, BUILDING_COLORS.YELLOW_MID,
+                1, BUILDING_COLORS.YELLOW_CLOSE
+              ],
+              ['boolean', ['feature-state', 'isNegative'], false],
+              BUILDING_COLORS.DARK_RED,
+              BUILDING_COLORS.DARK_GRAY
+            ],
+            'fill-extrusion-height': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              15, 0,
+              15.05, ['get', 'height']
+            ],
+            'fill-extrusion-opacity': 0.9
+          }
+        });
+
+        // Add POI layer from Mapbox tiles
+        try {
+          // First remove the default POI layer if it exists
+          if (map.current.getLayer('poi-label')) {
+            map.current.removeLayer('poi-label');
+          }
+
+          map.current.addLayer({
+            'id': 'miami-pois',
+            'type': 'circle',
+            'source': 'composite',
+            'source-layer': 'poi_label',
+            'minzoom': 0,
+            'maxzoom': 22,
+            'paint': {
+              'circle-radius': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                8, 2,
+                12, 4,
+                16, 6
+              ],
+              'circle-color': [
+                'match',
+                ['get', 'type'],
+                'Restaurant', '#ff9900',
+                'Cafe', '#cc6600',
+                'Bar', '#990099',
+                'Fast Food', '#ff6600',
+                'Shop', '#0066ff',
+                'Grocery', '#00cc00',
+                'Mall', '#3366ff',
+                'Market', '#009933',
+                'Museum', '#cc3300',
+                'Theater', '#cc0066',
+                'Cinema', '#990033',
+                'Gallery', '#cc3366',
+                'Park', '#33cc33',
+                'Garden', '#339933',
+                'Sports', '#3399ff',
+                'Hotel', '#9933ff',
+                'Bank', '#666699',
+                'Post', '#666666',
+                'School', '#ff3333',
+                'Hospital', '#ff0000',
+                '#999999'  // Default color for unmatched types
+              ],
+              'circle-stroke-width': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                8, 0.5,
+                12, 1,
+                16, 1.5
+              ],
+              'circle-stroke-color': '#ffffff'
             }
-        };
-    }, [startAnimation, stopAnimation, initializeParticleLayers, initializeLayersAndAnimation]);
+          });
 
-    // Separate effect for handling Cogent highlighting
-    useEffect(() => {
-        if (!map.current || !map.current.isStyleLoaded()) {
-          return;
+          // Debug available POI types
+          setTimeout(() => {
+            const features = map.current.querySourceFeatures('composite', {
+              sourceLayer: 'poi_label'
+            });
+            console.log('Available POI types:', {
+              count: features.length,
+              types: [...new Set(features.map(f => f.properties.type))].sort(),
+              categories: [...new Set(features.map(f => f.properties.category))].sort(),
+              sampleFeature: features[0]
+            });
+          }, 2000);
+
+        } catch (error) {
+          console.error('Error adding POI layer:', error);
         }
 
-        const updateMapHighlighting = () => {
+        // Debug POI data with more details
+        const debugPOIs = () => {
+          const features = map.current.queryRenderedFeatures({ 
+            layers: ['miami-pois'] 
+          });
+          console.log('POIs found:', {
+            count: features.length,
+            types: [...new Set(features.map(f => f.properties.type))],
+            properties: features[0]?.properties,
+            zoom: map.current.getZoom()
+          });
+        };
+
+        // Check POIs after map is fully loaded
+        map.current.once('idle', debugPOIs);
+        setTimeout(debugPOIs, 2000);
+
+        // Remove or modify the mousemove handler for POIs
+        map.current.off('mousemove', 'miami-pois'); // Remove any existing handler
+        map.current.on('mousemove', 'miami-pois', (e) => {
+            // Only update cursor
+            map.current.getCanvas().style.cursor = 'pointer';
+        });
+
+        map.current.on('mouseleave', 'miami-pois', () => {
+            map.current.getCanvas().style.cursor = '';
+        });
+
+        // Click event for showing POI details - simplified without popup
+        map.current.on('click', 'miami-pois', (e) => {
+            if (!e.features[0]) return;
+            
+            const poiCoordinates = e.features[0].geometry.coordinates;
+            const properties = e.features[0].properties;
+            
+            // Just log the click without creating a popup
+            console.log('POI clicked:', properties.name, 'at', poiCoordinates);
+        });
+
+        // Add the update building colors functionality
+        const updateBuildingColors = () => {
+          const bounds = map.current.getBounds();
+          const features = map.current.queryRenderedFeatures(
+            undefined,
+            { layers: ['3d-buildings'] }
+          );
+
+          features.forEach(building => {
+            if (!building.geometry || !building.geometry.coordinates) return;
+
+            const buildingId = building.id;
+            if (!buildingId) return;
+
+            if (!buildingStates.current.has(buildingId)) {
+              const height = building.properties.height || 0;
+              const area = calculateBuildingArea(building.geometry.coordinates[0]);
+              
+              let isInPowerGrid = false;
+              let isNegative = false;
+
+              // Store the building state
+              buildingStates.current.set(buildingId, {
+                isInPowerGrid,
+                isNegative,
+                height,
+                area
+              });
+            }
+          });
+
+          // Update the building colors based on their states
+          if (map.current.getLayer('3d-buildings')) {
+            map.current.setPaintProperty('3d-buildings', 'fill-extrusion-color', [
+              'case',
+              ['boolean', ['get', 'isNegative'], false], '#ff0000',
+              ['boolean', ['get', 'isInPowerGrid'], false], '#ffff00',
+              '#1a1a1a'  // Much darker gray for non-highlighted buildings
+            ]);
+          }
+        };
+
+        // Call updateBuildingColors initially and on map events
+        map.current.on('moveend', updateBuildingColors);
+        map.current.on('zoomend', updateBuildingColors);
+        updateBuildingColors();
+
+        // Add POI density layer
+        const createPOIDensityLayers = async () => {
           try {
-            if (cogentHighlight) {
-              // Dim all buildings
-              map.current.setPaintProperty('3d-buildings', 'fill-extrusion-opacity', 0.3);
-              map.current.setPaintProperty('3d-buildings', 'fill-extrusion-color', [
-                'case',
-                ['boolean', ['feature-state', 'isCogentHighlight'], false],
-                '#f7db05', // Highlighted buildings
-                'rgba(26, 26, 26, 0.3)' // Dimmed buildings
-              ]);
+            // Load both GeoJSON files
+            const [snapResponse, subdivResponse] = await Promise.all([
+              fetch('/PMT_Snapshot_feat_Service_2649843124464894629.geojson'),
+              fetch('/Subdivision_Boundary.geojson')
+            ]);
+            
+            const snapData = await snapResponse.json();
+            const subdivData = await subdivResponse.json();
 
-              // Find and highlight nearby buildings
-              const nearbyBuildings = map.current.queryRenderedFeatures({
-                layers: ['3d-buildings'],
-                filter: ['!=', ['get', 'height'], 0]
-              }).filter(building => {
-                if (!building.geometry || !building.geometry.coordinates) return false;
-                
-                const buildingCoords = building.geometry.coordinates[0][0];
-                const distance = Math.sqrt(
-                  Math.pow(buildingCoords[0] - cogentHighlight.longitude, 2) +
-                  Math.pow(buildingCoords[1] - cogentHighlight.latitude, 2)
-                );
-                
-                return distance < 0.005; // Adjust this value to control the highlight radius
-              }).slice(0, 3); // Limit to 3 nearby buildings
+            // Add first source (PMT Snapshot)
+            map.current.addSource('pmt-boundaries', {
+              type: 'geojson',
+              data: snapData,
+              generateId: true
+            });
 
-              nearbyBuildings.forEach(building => {
-                const buildingId = building.properties.id || building.id;
-                if (!buildingId) return;
+            // Add second source (Subdivision)
+            map.current.addSource('subdivision-boundaries', {
+              type: 'geojson',
+              data: subdivData,
+              generateId: true
+            });
 
-                map.current.setFeatureState(
-                  { source: 'composite', sourceLayer: 'building', id: buildingId },
-                  { isCogentHighlight: true }
-                );
-              });
-            } else {
-              // Reset to original state
-              map.current.setPaintProperty('3d-buildings', 'fill-extrusion-opacity', 1);
-              map.current.setPaintProperty('3d-buildings', 'fill-extrusion-color', [
-                'case',
-                ['boolean', ['feature-state', 'inPowerGrid'], false],
-                [
-                  'interpolate',
-                  ['linear'],
-                  ['feature-state', 'yellowIntensity'],
-                  0, '#8B7355',
-                  0.5, '#DAA520',
-                  1, '#f7db05'
+            // Add PMT layer
+            map.current.addLayer({
+              'id': 'pmt-boundaries',
+              'type': 'fill',
+              'source': 'pmt-boundaries',
+              'paint': {
+                'fill-color': [
+                  'case',
+                  ['boolean', ['feature-state', 'isHighlighted'], false],
+                  '#ff0000',  // Red for PMT highlights
+                  'rgba(0, 0, 0, 0)'  // Transparent by default
                 ],
-                ['case',
-                  ['boolean', ['feature-state', 'isNegative'], false],
-                  '#380614',
-                  ['case',
-                    ['boolean', ['feature-state', 'isGreen'], false],
-                    '#51ff00',
-                    '#1a1a1a'
-                  ]
+                'fill-opacity': [
+                  'case',
+                  ['boolean', ['feature-state', 'isHighlighted'], false],
+                  0.15,  // Changed from 0.3 to 0.15 for 50% transparency
+                  0     // Transparent by default
                 ]
-              ]);
-            }
+              }
+            });
+
+            // Add Subdivision layer
+            map.current.addLayer({
+              'id': 'subdivision-boundaries',
+              'type': 'fill',
+              'source': 'subdivision-boundaries',
+              'paint': {
+                'fill-color': [
+                  'case',
+                  ['boolean', ['feature-state', 'hasSchool'], false],
+                  '#0066ff',  // Blue for subdivision highlights
+                  'rgba(0, 0, 0, 0)'  // Transparent by default
+                ],
+                'fill-opacity': [
+                  'case',
+                  ['boolean', ['feature-state', 'hasSchool'], false],
+                  0.15,  // Changed from 0.3 to 0.15 for 50% transparency
+                  0     // Transparent by default
+                ]
+              }
+            });
+
+            // Update hover handler to highlight both layers
+            map.current.on('mousemove', 'miami-pois', (e) => {
+              if (!e.features[0]) return;
+              
+              const point = e.point;
+              
+              // Query both layers
+              const pmtFeatures = map.current.queryRenderedFeatures(
+                point,
+                { layers: ['pmt-boundaries'] }
+              );
+
+              const subdivFeatures = map.current.queryRenderedFeatures(
+                point,
+                { layers: ['subdivision-boundaries'] }
+              );
+
+              // Clear previous PMT highlight
+              if (previouslyHighlightedPMT.current) {
+                map.current.setFeatureState(
+                  {
+                    source: 'pmt-boundaries',
+                    id: previouslyHighlightedPMT.current
+                  },
+                  { isHighlighted: false }
+                );
+              }
+
+              // Clear previous subdivision highlight
+              if (previouslyHighlightedSubdivision.current) {
+                map.current.setFeatureState(
+                  {
+                    source: 'subdivision-boundaries',
+                    id: previouslyHighlightedSubdivision.current
+                  },
+                  { hasSchool: false }
+                );
+              }
+
+              // Set new PMT highlight
+              if (pmtFeatures[0]) {
+                previouslyHighlightedPMT.current = pmtFeatures[0].id;
+                map.current.setFeatureState(
+                  {
+                    source: 'pmt-boundaries',
+                    id: pmtFeatures[0].id
+                  },
+                  { isHighlighted: true }
+                );
+              }
+
+              // Set new subdivision highlight
+              if (subdivFeatures[0]) {
+                previouslyHighlightedSubdivision.current = subdivFeatures[0].id;
+                map.current.setFeatureState(
+                  {
+                    source: 'subdivision-boundaries',
+                    id: subdivFeatures[0].id
+                  },
+                  { hasSchool: true }
+                );
+              }
+            });
+
+            // Update mouseleave to clear both highlights
+            map.current.on('mouseleave', 'miami-pois', () => {
+              if (previouslyHighlightedPMT.current) {
+                map.current.setFeatureState(
+                  {
+                    source: 'pmt-boundaries',
+                    id: previouslyHighlightedPMT.current
+                  },
+                  { isHighlighted: false }
+                );
+                previouslyHighlightedPMT.current = null;
+              }
+
+              if (previouslyHighlightedSubdivision.current) {
+                map.current.setFeatureState(
+                  {
+                    source: 'subdivision-boundaries',
+                    id: previouslyHighlightedSubdivision.current
+                  },
+                  { hasSchool: false }
+                );
+                previouslyHighlightedSubdivision.current = null;
+              }
+            });
+
           } catch (error) {
-            console.error('Error updating map highlighting:', error);
+            console.error('Error creating density layers:', error);
           }
         };
 
-        const handleStyleLoad = () => {
-          updateMapHighlighting();
-        };
+        // Call this after adding POI layer
+        createPOIDensityLayers();
 
-        map.current.on('style.load', handleStyleLoad);
+      }
 
-        // Initial update if style is already loaded
-        if (map.current.isStyleLoaded()) {
-          updateMapHighlighting();
-        }
+      // Initialize power grid
+      initializePowerGrid(map.current);
 
-        return () => {
-          if (map.current) {
-            map.current.off('style.load', handleStyleLoad);
+      // Initialize particle system
+      initializeParticleLayers(map.current);
+      
+      // Start animation loop
+      const animate = () => {
+        animateParticles({ 
+          map: map.current, 
+          frameCount: frameCount.current, 
+          lastAnimationTime, 
+          animationFrame 
+        });
+        frameCount.current++;
+        animationFrame.current = requestAnimationFrame(animate);
+      };
+
+      // Start animation after a short delay
+      setTimeout(() => {
+        console.log('Starting animation loop');
+        animate();
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error initializing layers:', error);
+    }
+  }, [map]);
+
+  useEffect(() => {
+    if (map.current) return;
+
+    // Initialize map
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: MAP_CONFIG.style,
+      center: MAP_CONFIG.center,
+      zoom: MAP_CONFIG.zoom,
+      minZoom: MAP_CONFIG.minZoom,
+      maxZoom: MAP_CONFIG.maxZoom
+    });
+
+    const cleanup = setupMapEventListeners(map.current, {
+      onLoad: () => {
+        initializeLayers();
+      }
+    });
+
+    return () => {
+      console.log('🗺️ Map cleanup triggered');
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+      cleanup();
+    };
+  }, [initializeLayers, isSelectingArea]);
+
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      if (hoverPopup) {
+        hoverPopup.remove();
+        setHoverPopup(null);
+      }
+    };
+  }, [hoverPopup]);
+
+  // Add function to highlight buildings near POIs
+  const highlightPOIBuildings = (poiTypes, highlightColor = '#FF4500') => {
+    if (!map.current) return;
+
+    // Store the highlighted buildings data globally
+    const storedHighlights = {
+      buildings: new Map(),
+      color: highlightColor,
+      poiTypes: poiTypes
+    };
+
+    // Clear any previous highlights
+    if (previousHighlight.current) {
+      previousHighlight.current.forEach(buildingId => {
+        map.current.setFeatureState(
+          { source: 'composite', sourceLayer: 'building', id: buildingId },
+          { isHighlighted: false }
+        );
+      });
+    }
+
+    // Convert input types to Mapbox POI categories
+    const mapboxPoiTypes = poiTypes.map(type => {
+      switch(type.toLowerCase()) {
+        case 'restaurant': return ['Restaurant', 'Fast Food', 'Cafe'];
+        case 'bar': return ['Bar', 'Pub'];
+        case 'nightclub': return ['Nightclub', 'Club'];
+        default: return type;
+      }
+    }).flat();
+
+    console.log('Searching for POI types:', mapboxPoiTypes);
+
+    // Query for buildings and POIs in the current view
+    const buildings = map.current.queryRenderedFeatures({
+      layers: ['3d-buildings']
+    });
+
+    const pois = map.current.queryRenderedFeatures({
+      layers: ['miami-pois']
+    });
+
+    console.log('All POIs found:', pois.map(p => p.properties.type));
+
+    // Filter POIs by type
+    const relevantPois = pois.filter(poi => 
+      mapboxPoiTypes.includes(poi.properties.type)
+    );
+
+    console.log('Found relevant POIs:', relevantPois.length, 'Buildings:', buildings.length);
+
+    // Create a map to store building IDs and their POI counts
+    const buildingPOIs = new Map();
+
+    relevantPois.forEach(poi => {
+      const poiCoord = poi.geometry.coordinates;
+      
+      // Find the closest building to this POI
+      buildings.forEach(building => {
+        if (building.geometry.coordinates && building.geometry.coordinates[0]) {
+          const buildingCoords = building.geometry.coordinates[0];
+          
+          // Check if POI is within or very close to building polygon
+          const isNearby = buildingCoords.some(coord => {
+            const distance = Math.sqrt(
+              Math.pow(coord[0] - poiCoord[0], 2) + 
+              Math.pow(coord[1] - poiCoord[1], 2)
+            );
+            return distance < 0.0002; // This threshold might be too large
+          });
+
+          if (isNearby && building.id) {
+            buildingPOIs.set(building.id, (buildingPOIs.get(building.id) || 0) + 1);
           }
-        };
-    }, [cogentHighlight, startAnimation, stopAnimation]);
-
-    // Second useEffect for layers and animation
-    useEffect(() => {
-        if (!map.current) return;
-
-        // Wait for map to be loaded
-        if (!map.current.loaded()) {
-            map.current.on('load', initializeLayersAndAnimation);
-            return;
         }
-
-        function initializeLayersAndAnimation() {
-            // Helper function to safely remove a layer if it exists
-            const removeLayerIfExists = (id) => {
-              if (map.current.getLayer(id)) {
-                map.current.removeLayer(id);
-              }
-            };
-
-            // Helper function to safely add or update a source
-            const addOrUpdateSource = (id, config) => {
-              try {
-                if (map.current.getSource(id)) {
-                  // If source exists, update its data
-                  map.current.getSource(id).setData(config.data);
-                } else {
-                  // If source doesn't exist, add it
-                  map.current.addSource(id, config);
-                }
-              } catch (error) {
-                console.error(`Error handling source ${id}:`, error);
-              }
-            };
-
-            // Remove existing layers first (they must be removed before sources)
-            removeLayerIfExists('particles');
-            removeLayerIfExists('building-markers');
-            removeLayerIfExists('3d-buildings');
-
-            // Add or update sources
-            addOrUpdateSource('particles', {
-              type: 'geojson',
-              data: {
-                type: 'FeatureCollection',
-                features: []
-              }
-            });
-
-            addOrUpdateSource('buildings', {
-              type: 'geojson',
-              data: {
-                type: 'FeatureCollection',
-                features: []
-              }
-            });
-
-            // Now add the layers
-            if (!map.current.getLayer('3d-buildings')) {
-              map.current.addLayer({
-                'id': '3d-buildings',
-                'source': 'composite',
-                'source-layer': 'building',
-                'type': 'fill-extrusion',
-                'minzoom': 12,
-                'paint': {
-                  'fill-extrusion-color': [
-                    'case',
-                    ['boolean', ['feature-state', 'inPowerGrid'], false],
-                    [
-                      'interpolate',
-                      ['linear'],
-                      ['feature-state', 'yellowIntensity'],
-                      0, '#8B7355',
-                      0.5, '#DAA520',
-                      1, '#f7db05'
-                    ],
-                    ['case',
-                      ['boolean', ['feature-state', 'isNegative'], false],
-                      '#380614',
-                      ['case',
-                        ['boolean', ['feature-state', 'isGreen'], false],
-                        '#51ff00',
-                        '#1a1a1a'
-                      ]
-                    ]
-                  ],
-                  'fill-extrusion-height': ['get', 'height']
-                }
-              });
-            }
-
-            if (!map.current.getLayer('particles')) {
-              map.current.addLayer({
-                id: 'particles',
-                type: 'circle',
-                source: 'particles',
-                minzoom: 13,
-                maxzoom: 20,
-                paint: {
-                  'circle-radius': 2,
-                  'circle-color': '#4CAF50',
-                  'circle-blur': 1
-                }
-              });
-            }
-
-            if (!map.current.getLayer('building-markers')) {
-              map.current.addLayer({
-                id: 'building-markers',
-                type: 'symbol',
-                source: 'buildings',
-                minzoom: 14,
-                maxzoom: 20,
-                layout: {
-                  'icon-image': 'building-icon',
-                  'icon-size': 1,
-                  'icon-allow-overlap': false
-                }
-              });
-            }
-
-            // 1. Add power grid network source
-            map.current.addSource('power-grid-network', {
-                type: 'vector',
-                url: 'mapbox://mapbox.mapbox-streets-v8'
-            });
-
-
-
-            // 4. Add secondary network (blue)
-            map.current.addLayer({
-                'id': 'secondary-network-main',
-                'type': 'line',
-                'source': 'power-grid-network',
-                'source-layer': 'road',
-                'filter': [
-                    'all',
-                    ['match',
-                        ['get', 'class'],
-                        ['residential', 'service', 'street'],
-                        true,
-                        false
-                    ],
-                    ['>=', ['zoom'], 13]
-                ],
-                'paint': {
-                    'line-color': '#67B7D1',
-                    'line-width': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        13, [
-                            'match',
-                            ['get', 'class'],
-                            'street', 2,
-                            'residential', 1.5,
-                            'service', 1,
-                            0.5
-                        ],
-                        16, [
-                            'match',
-                            ['get', 'class'],
-                            'street', 4,
-                            'residential', 3,
-                            'service', 2,
-                            1
-                        ]
-                    ],
-                    'line-opacity': 0.4,
-                    'line-blur': 0.5
-                }
-            });
-
-            // 5. Add data flow source and particles
-            map.current.addSource('data-flow', {
-                type: 'vector',
-                url: 'mapbox://mapbox.mapbox-streets-v8'
-            });
-
-            // 6. Add the particle layer
-            map.current.addLayer({
-                'id': 'data-flow-particles',
-                'type': 'circle',
-                'source': 'data-flow',
-                'source-layer': 'road',
-                'filter': [
-                    'all',
-                    ['match',
-                        ['get', 'class'],
-                        ['primary', 'trunk', 'motorway', 'secondary', 'tertiary'],
-                        true,
-                        false
-                    ],
-                    ['>=', ['zoom'], 13]
-                ],
-                'paint': {
-                    'circle-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 1.5,
-                        16, 2.5
-                    ],
-                    'circle-color': '#FFFFFF',
-                    'circle-opacity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 0.7,
-                        16, 0.9
-                    ],
-                    'circle-blur': 0.3
-                }
-            });
-
-            // 7. Add TCP flow source
-            map.current.addSource('tcp-flow', {
-                type: 'vector',
-                url: 'mapbox://mapbox.mapbox-streets-v8'
-            });
-
-            // 8. Add the TCP particle layer
-            map.current.addLayer({
-                'id': 'tcp-flow-particles',
-                'type': 'circle',
-                'source': 'tcp-flow',
-                'source-layer': 'road',
-                'filter': [
-                    'all',
-                    ['match',
-                        ['get', 'class'],
-                        ['secondary', 'tertiary', 'service'],
-                        true,
-                        false
-                    ],
-                    ['>=', ['zoom'], 13]
-                ],
-                'paint': {
-                    'circle-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 1.5,
-                        16, 2.5
-                    ],
-                    'circle-color': '#FF4500', // Bright orange color
-                    'circle-opacity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 0.8,
-                        16, 0.95
-                    ],
-                    'circle-blur': 0.2
-                }
-            });
-
-            // 9. Add TCP2 flow source
-            map.current.addSource('tcp2-flow', {
-                type: 'vector',
-                url: 'mapbox://mapbox.mapbox-streets-v8'
-            });
-
-            // 10. Add the TCP2 particle layer
-            map.current.addLayer({
-                'id': 'tcp2-flow-particles',
-                'type': 'circle',
-                'source': 'tcp2-flow',
-                'source-layer': 'road',
-                'filter': [
-                    'all',
-                    ['match',
-                        ['get', 'class'],
-                        ['motorway', 'primary', 'street'],
-                        true,
-                        false
-                    ],
-                    ['>=', ['zoom'], 13]
-                ],
-                'paint': {
-                    'circle-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 1.3,
-                        16, 2.3
-                    ],
-                    'circle-color': '#00BFFF', // Light blue (DeepSkyBlue)
-                    'circle-opacity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 0.75,
-                        16, 0.9
-                    ],
-                    'circle-blur': 0.25
-                }
-            });
-
-            // 11. Add TCP3 flow source
-            map.current.addSource('tcp3-flow', {
-                type: 'vector',
-                url: 'mapbox://mapbox.mapbox-streets-v8'
-            });
-
-            // 12. Add the TCP3 particle layer (white, high density)
-            map.current.addLayer({
-                'id': 'tcp3-flow-particles',
-                'type': 'circle',
-                'source': 'tcp3-flow',
-                'source-layer': 'road',
-                'filter': [
-                    'all',
-                    ['match',
-                        ['get', 'class'],
-                        ['residential', 'service', 'street', 'path'],
-                        true,
-                        false
-                    ],
-                    ['>=', ['zoom'], 13]
-                ],
-                'paint': {
-                    'circle-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 1.0,
-                        16, 1.8
-                    ],
-                    'circle-color': '#FFFFFF',
-                    'circle-opacity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 0.6,
-                        16, 0.8
-                    ],
-                    'circle-blur': 0.2
-                }
-            });
-
-            // Add green building particles source
-            map.current.addSource('green-building-particles', {
-                type: 'geojson',
-                data: {
-                    type: 'FeatureCollection',
-                    features: []
-                }
-            });
-
-            // Add the green particles layer with increased radius
-            map.current.addLayer({
-                'id': 'green-building-particles',
-                'type': 'circle',
-                'source': 'green-building-particles',
-                'paint': {
-                    'circle-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        8, ['*', ['get', 'particleSize'], 1.5],
-                        10, ['*', ['get', 'particleSize'], 1.5],
-                        12, ['*', ['get', 'particleSize'], 1.4],
-                        14, ['*', ['get', 'particleSize'], 1.25],
-                        16, ['*', ['get', 'particleSize'], 1.1]
-                    ],
-                    'circle-color': ['get', 'color'],
-                    'circle-opacity': ['get', 'opacity'],
-                    'circle-blur': 0.2
-                }
-            });
-
-            // Updated animation function with more rings and variation
-            function animateParticles() {
-                try {
-                    const zoom = map.current.getZoom();
-                    if (zoom < 13) {
-                        return;
-                    }
-
-                    const greenBuildingParticles = {
-                        type: 'FeatureCollection',
-                        features: []
-                    };
-
-                    // Get current buildings and roads
-                    const buildings = map.current.queryRenderedFeatures({
-                        layers: ['3d-buildings']
-                    });
-
-                    const roads = map.current.queryRenderedFeatures({
-                        layers: ['road-simple', 'road-pedestrian']
-                    });
-
-                    // Filter for green buildings
-                    const greenBuildings = buildings.filter(building => {
-                        const buildingId = building.properties.id || building.id;
-                        if (!buildingId) return false;
-                        
-                        const state = buildingStates.current.get(buildingId);
-                        return state && state.isGreen;
-                    });
-
-                    // Calculate building centers
-                    const buildingCenters = greenBuildings.map(building => {
-                        const buildingCoords = building.geometry.coordinates[0];
-                        return [
-                            buildingCoords.reduce((sum, coord) => sum + coord[0], 0) / buildingCoords.length,
-                            buildingCoords.reduce((sum, coord) => sum + coord[1], 0) / buildingCoords.length
-                        ];
-                    });
-
-                    greenBuildings.forEach((building, buildingIndex) => {
-                        const buildingCenter = buildingCenters[buildingIndex];
-                        const buildingHeight = building.properties.height || 20;
-                        const buildingArea = building.properties.area || 1000;
-                        const heightScale = Math.pow(buildingHeight / 20, 1.5);
-                        const areaScale = Math.pow(buildingArea / 1000, 1.3);
-                        const totalScale = Math.min(Math.max(heightScale + areaScale, 1), 6);
-
-                        roads.forEach(road => {
-                            if (!road.geometry || !road.geometry.coordinates) return;
-
-                            const roadCoords = road.geometry.type === 'LineString' ? 
-                                road.geometry.coordinates : 
-                                road.geometry.coordinates[0];
-
-                            for (let idx = 0; idx < roadCoords.length - 1; idx++) {
-                                const roadCoord = roadCoords[idx];
-                                const nextRoadCoord = roadCoords[idx + 1];
-                                
-                                const distToBuilding = Math.sqrt(
-                                    Math.pow(roadCoord[0] - buildingCenter[0], 2) +
-                                    Math.pow(roadCoord[1] - buildingCenter[1], 2)
-                                );
-
-                                if (distToBuilding < MAP_CONFIG.TOTAL_SCALE * totalScale) {
-                                    const fadeStart = 0.0002 * totalScale;
-                                    const fadeEnd = 0.006 * totalScale;
-                                    const rawFade = (distToBuilding - fadeStart) / (fadeEnd - fadeStart);
-                                    const enhancedFade = Math.exp(-rawFade * 2);
-                                    const dx = nextRoadCoord[0] - roadCoord[0];
-                                    const dy = nextRoadCoord[1] - roadCoord[1];
-                                    const roadSegmentLength = Math.sqrt(dx * dx + dy * dy);
-                                    
-                                    // Adjust particle count based on zoom
-                                    const baseParticles = Math.floor(40 * Math.max(0.2, (zoom - 13) / 5));
-                                    const particlesPerRoadSegment = Math.floor(baseParticles * roadSegmentLength * 1000 * (enhancedFade + 0.1));
-                                    
-                                    for (let i = 0; i < particlesPerRoadSegment; i++) {
-                                        const t = i / particlesPerRoadSegment;
-                                        const roadLng = roadCoord[0] + dx * t;
-                                        const roadLat = roadCoord[1] + dy * t;
-
-                                        const perpX = -dy;
-                                        const perpY = dx;
-                                        const perpLength = Math.sqrt(perpX * perpX + perpY * perpY);
-                                        
-                                        if (perpLength === 0) continue;
-
-                                        const normalizedPerpX = perpX / perpLength;
-                                        const normalizedPerpY = perpY / perpLength;
-
-                                        // Green particles
-                                        const offset = (Math.random() * 0.0001) * Math.sqrt(enhancedFade);
-                                        const randomOffset = (Math.random() - 0.5) * 0.00004 * enhancedFade;
-                                        
-                                        greenBuildingParticles.features.push({
-                                            type: 'Feature',
-                                            properties: {
-                                                particleSize: 1.2 * (enhancedFade + 0.1),
-                                                opacity: Math.max(0.1, Math.min(0.9, 0.9 * enhancedFade)),
-                                                color: `rgba(80, 220, 80, ${Math.pow(enhancedFade, 1.2)})`
-                                            },
-                                            geometry: {
-                                                type: 'Point',
-                                                coordinates: [
-                                                    roadLng + normalizedPerpX * offset + randomOffset,
-                                                    roadLat + normalizedPerpY * offset + randomOffset
-                                                ]
-                                            }
-                                        });
-
-                                        // White particles (every third particle)
-                                        if (i % 3 === 0) {
-                                            const waveSpeed = 2.0;
-                                            const waveFrequency = 4.0;
-                                            const whiteOffset = 0.00005 * Math.sin((t * Math.PI * waveFrequency) + (Date.now() * 0.001 * waveSpeed));
-                                            
-                                            const flowSpeed = 0.5;
-                                            const flowOffset = ((t + Date.now() * 0.001 * flowSpeed) % 1.0) - 0.5;
-                                            
-                                            // Add white particle on both sides of the road
-                                            [-1, 1].forEach(side => {
-                                                greenBuildingParticles.features.push({
-                                                    type: 'Feature',
-                                                    properties: {
-                                                        particleSize: 2.0 * (enhancedFade + 0.1),
-                                                        opacity: 0.2,
-                                                        color: `rgba(255, 255, 255, ${Math.pow(enhancedFade, 1.1)})`
-                                                    },
-                                                    geometry: {
-                                                        type: 'Point',
-                                                        coordinates: [
-                                                            roadLng + side * normalizedPerpX * whiteOffset + (normalizedPerpX * flowOffset * 0.00002),
-                                                            roadLat + side * normalizedPerpY * whiteOffset + (normalizedPerpY * flowOffset * 0.00002)
-                                                        ]
-                                                    }
-                                                });
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        });
-                    });
-
-                    // Update the particle source with all particles
-                    if (map.current && map.current.getSource('green-building-particles')) {
-                        map.current.getSource('green-building-particles').setData(greenBuildingParticles);
-                    }
-
-                } catch (error) {
-                    console.error('Animation error:', error);
-                }
-            }
-
-            // Start animation
-            animateParticles();
-
-            // Generate cooling points function
-            function generateCoolingPoints() {
-                const points = {
-                    type: 'FeatureCollection',
-                    features: []
-                };
-
-                // Generate points for each building
-                dcData.features.forEach(feature => {
-                    const [baseLng, baseLat] = feature.geometry.coordinates;
-                    const isPositive = Math.random() > 0.5;
-                    
-                    // Base radius for point spread
-                    const baseRadius = 0.00375;
-                    const outerRadius = 0.00625;
-                    
-                    // Core points
-                    for (let i = 0; i < 30; i++) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const radius = Math.random() * baseRadius;
-                        const lng = baseLng + Math.cos(angle) * radius;
-                        const lat = baseLat + Math.sin(angle) * radius;
-                        
-                        // Central high-intensity points
-                        if (i < 5) {
-                            points.features.push({
-                                type: 'Feature',
-                                properties: {
-                                    efficiency: isPositive ? 0.9 : 0.1,
-                                    intensity: 1
-                                },
-                                geometry: {
-                                    type: 'Point',
-                                    coordinates: [lng, lat]
-                                }
-                            });
-                        }
-                        
-                        // Mid-range points
-                        points.features.push({
-                            type: 'Feature',
-                            properties: {
-                                efficiency: isPositive ? 
-                                    0.6 + (Math.random() * 0.4) : 
-                                    0.1 + (Math.random() * 0.3),
-                                intensity: 1 - (radius * 160)
-                            },
-                            geometry: {
-                                type: 'Point',
-                                coordinates: [lng, lat]
-                            }
-                        });
-                    }
-
-                    // Outer diffuse points
-                    for (let i = 0; i < 25; i++) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const radius = baseRadius + (Math.random() * outerRadius);
-                        const lng = baseLng + Math.cos(angle) * radius;
-                        const lat = baseLat + Math.sin(angle) * radius;
-                        
-                        points.features.push({
-                            type: 'Feature',
-                            properties: {
-                                efficiency: isPositive ? 
-                                    0.3 + (Math.random() * 0.3) : 
-                                    0.1 + (Math.random() * 0.2),
-                                intensity: 0.4 - (Math.random() * 0.2)
-                            },
-                            geometry: {
-                                type: 'Point',
-                                coordinates: [lng, lat]
-                            }
-                        });
-                    }
-                });
-
-                return points;
-            }
-
-            // Add cooling efficiency heatmap source
-            map.current.addSource('cooling-efficiency', {
-                type: 'geojson',
-                data: generateCoolingPoints()
-            });
-
-            // Add the heatmap layer
-            map.current.addLayer({
-                id: 'cooling-heat',
-                type: 'heatmap',
-                source: 'cooling-efficiency',
-                paint: {
-                    'heatmap-weight': [
-                        'interpolate',
-                        ['linear'],
-                        ['get', 'efficiency'],
-                        0, 0,
-                        0.5, 1,
-                        1, 2
-                    ],
-                    'heatmap-intensity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        14, 0.7,
-                        16, 1.1
-                    ],
-                    'heatmap-color': [
-                        'interpolate',
-                        ['linear'],
-                        ['heatmap-density'],
-                        0, 'rgba(0,0,0,0)',
-                        0.2, 'rgba(255,65,54,0.25)',
-                        0.5, 'rgba(133,133,133,0.25)',
-                        1, 'rgba(76,175,80,0.25)'
-                    ],
-                    'heatmap-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        14, 50,
-                        16, 75
-                    ],
-                    'heatmap-opacity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        14, 0.9,
-                        16, 0.7
-                    ]
-                }
-            }, 'waterway-label');
-
-            // Modified update function to maintain consistent states
-            const updateBuildingColors = () => {
-                const buildings = map.current.queryRenderedFeatures({
-                    layers: ['3d-buildings']
-                });
-
-                // First pass: identify green buildings
-                const greenBuildingCoordinates = buildings
-                    .filter(building => {
-                        const height = building.properties.height || 0;
-                        return height > 10 && height % 4 === 0;
-                    })
-                    .map(building => building.geometry.coordinates[0][0]);
-
-                buildings.forEach(building => {
-                    if (!building.geometry || !building.geometry.coordinates) return;
-
-                    const buildingId = building.properties.id || building.id;
-                    if (!buildingId) return;
-
-                    if (!buildingStates.current.has(buildingId)) {
-                        // Calculate building size
-                        const height = building.properties.height || 0;
-                        const area = calculateBuildingArea(building.geometry.coordinates[0]);
-                        
-                        let isInPowerGrid = false;
-                        let isNegative = false;
-                        let isGreen = false;
-                        let yellowIntensity = 0;
-
-                        // Check if it's a green building
-                        if (height > 10 && height % 4 === 0) {
-                            isGreen = true;
-                        }
-
-                        // Only check power grid and negative if not green
-                        if (!isGreen) {
-                            // Increased chance for large buildings to be yellow
-                            const shouldCheckPowerGrid = Math.random() > 0.55 || // Increased base chance
-                                (height > 30 && area > 1000 && Math.random() > 0.3); // Additional chance for large buildings
-
-                            if (shouldCheckPowerGrid) {
-                                const centroid = building.geometry.coordinates[0][0];
-                                
-                                for (const location of POWER_GRID_LOCATIONS) {
-                                    const coords = location.coordinates;
-                                    const distance = Math.sqrt(
-                                        Math.pow(centroid[0] - coords[0], 2) + 
-                                        Math.pow(centroid[1] - coords[1], 2)
-                                    );
-
-                                    if (distance < 0.002) {
-                                        isInPowerGrid = true;
-                                        
-                                        // Calculate yellow intensity based on proximity to green buildings
-                                        if (greenBuildingCoordinates.length > 0) {
-                                            let minDistance = Infinity;
-                                            for (const greenCoord of greenBuildingCoordinates) {
-                                                const distToGreen = Math.sqrt(
-                                                    Math.pow(centroid[0] - greenCoord[0], 2) + 
-                                                    Math.pow(centroid[1] - greenCoord[1], 2)
-                                                );
-                                                minDistance = Math.min(minDistance, distToGreen);
-                                            }
-                                            // Convert distance to intensity (closer = brighter)
-                                            yellowIntensity = Math.max(0, 1 - (minDistance * 500));
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Only be negative if not green and not in power grid
-                            if (!isInPowerGrid) {
-                                isNegative = Math.random() < 0.15;
-                            }
-                        }
-
-                        buildingStates.current.set(buildingId, { 
-                            isInPowerGrid, 
-                            isNegative, 
-                            isGreen,
-                            yellowIntensity
-                        });
-                    }
-
-                    const state = buildingStates.current.get(buildingId);
-
-                    try {
-                        map.current.setFeatureState(
-                            {
-                                source: 'composite',
-                                sourceLayer: 'building',
-                                id: buildingId
-                            },
-                            {
-                                inPowerGrid: state.isInPowerGrid,
-                                isNegative: state.isNegative,
-                                isGreen: state.isGreen,
-                                yellowIntensity: state.yellowIntensity
-                            }
-                        );
-                    } catch (error) {
-                        console.warn('Could not set feature state for building:', buildingId);
-                    }
-                });
-            };
-
-            // Helper function to calculate building area (if not already present)
-            function calculateBuildingArea(coordinates) {
-                if (!coordinates || coordinates.length < 3) return 0;
-                
-                let area = 0;
-                for (let i = 0; i < coordinates.length; i++) {
-                    const j = (i + 1) % coordinates.length;
-                    area += coordinates[i][0] * coordinates[j][1];
-                    area -= coordinates[j][0] * coordinates[i][1];
-                }
-                return Math.abs(area) * 10000;
-            }
-
-            // Update building colors when the map moves
-            map.current.on('moveend', updateBuildingColors);
-            // Initial update
-            updateBuildingColors();
-
-            function createGreenLines() {
-                const zoom = map.current.getZoom();
-                const buildings = map.current.queryRenderedFeatures({
-                    layers: ['3d-buildings']
-                });
-                
-                // Reduce number of buildings processed based on zoom
-                const zoomFactor = Math.max(0.2, (zoom - 13) / 5); // Results in 0.2 at zoom 14, increasing to 1 at zoom 18
-                const buildingsToProcess = Math.floor(buildings.length * zoomFactor);
-                
-                const greenBuildings = buildings
-                    .filter(building => {
-                        const buildingId = building.properties.id || building.id;
-                        if (!buildingId) return false;
-                        
-                        const state = buildingStates.current.get(buildingId);
-                        return state && state.isGreen;
-                    })
-                    .slice(0, buildingsToProcess); // Limit the number of buildings processed
-                
-                const roads = map.current.queryRenderedFeatures({
-                    layers: ['road-simple'],
-                    source: 'composite',
-                    sourceLayer: 'road'
-                });
-                
-                const greenLinesData = {
-                    type: 'FeatureCollection',
-                    features: []
-                };
-
-                greenBuildings.forEach(building => {
-                    if (!building.geometry || !building.geometry.coordinates) return;
-
-                    const buildingCoords = building.geometry.coordinates[0];
-                    const centroid = [
-                        buildingCoords.reduce((sum, coord) => sum + coord[0], 0) / buildingCoords.length,
-                        buildingCoords.reduce((sum, coord) => sum + coord[1], 0) / buildingCoords.length
-                    ];
-
-                    // Filter nearby roads
-                    const nearbyRoads = roads.filter(road => {
-                        if (!road.geometry || !road.geometry.coordinates) return false;
-                        const roadCoords = Array.isArray(road.geometry.coordinates[0]) ? 
-                            road.geometry.coordinates[0] : road.geometry.coordinates;
-                        
-                        return roadCoords.some(coord => 
-                            Math.sqrt(
-                                Math.pow(centroid[0] - coord[0], 2) + 
-                                Math.pow(centroid[1] - coord[1], 2)
-                            ) < 0.003
-                        );
-                    });
-
-                    // Number of lines based on building size
-                    const buildingArea = calculateBuildingArea(buildingCoords);
-                    const numLines = Math.min(Math.max(3, Math.floor(buildingArea / 1000)), 10);
-                    let linesAdded = 0;
-
-                    // Shuffle roads for variety
-                    const shuffledRoads = [...nearbyRoads].sort(() => Math.random() - 0.5);
-
-                    shuffledRoads.forEach(road => {
-                        if (linesAdded >= numLines) return;
-
-                        const roadCoords = Array.isArray(road.geometry.coordinates[0]) ? 
-                            road.geometry.coordinates[0] : road.geometry.coordinates;
-
-                        if (roadCoords && roadCoords.length >= 2) {
-                            const lineCoords = [];
-                            let totalDistance = 0;
-                            const maxDistance = 0.004;
-
-                            for (let i = 0; i < roadCoords.length - 1 && totalDistance < maxDistance; i++) {
-                                if (!lineCoords.length) {
-                                    lineCoords.push(roadCoords[i]);
-                                }
-                                lineCoords.push(roadCoords[i + 1]);
-                                
-                                totalDistance += Math.sqrt(
-                                    Math.pow(roadCoords[i + 1][0] - roadCoords[i][0], 2) + 
-                                    Math.pow(roadCoords[i + 1][1] - roadCoords[i][1], 2)
-                                );
-                            }
-
-                            if (lineCoords.length >= 2) {
-                                greenLinesData.features.push({
-                                    type: 'Feature',
-                                    properties: {
-                                        roadClass: road.properties.class
-                                    },
-                                    geometry: {
-                                        type: 'LineString',
-                                        coordinates: lineCoords
-                                    }
-                                });
-                                linesAdded++;
-                            }
-                        }
-                    });
-                });
-
-                return greenLinesData;
-            }
-
-            // First, add the source for green lines
-            map.current.addSource('green-lines', {
-                type: 'geojson',
-                lineMetrics: true,
-                data: {
-                    type: 'FeatureCollection',
-                    features: []
-                }
-            });
-
-            // Then add the layer for green lines
-            map.current.addLayer({
-                'id': 'green-building-lines',
-                'type': 'line',
-                'source': 'green-lines',
-                'layout': {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                'paint': {
-                    'line-color': '#51ff00',
-                    'line-width': 3,
-                    'line-opacity': 0.8,
-                    'line-gradient': [
-                        'interpolate',
-                        ['linear'],
-                        ['line-progress'],
-                        0, '#51ff00',
-                        1, '#143d00'
-                    ]
-                }
-            });
-
-            // Add an update function to refresh the lines
-            function updateGreenLines() {
-                if (!map.current) return;
-                const greenLinesData = createGreenLines();
-                
-                if (map.current.getSource('green-lines')) {
-                    map.current.getSource('green-lines').setData(greenLinesData);
-                }
-            }
-
-            // Add event listeners
-            map.current.on('style.load', () => {
-                updateGreenLines();
-            });
-
-            map.current.on('moveend', () => {
-                updateGreenLines();
-            });
-
-            map.current.on('zoom', () => {
-                updateGreenLines();
-            });
-
-            // Add source for heatmap
-            map.current.addSource('distance-heatmap', {
-                'type': 'geojson',
-                'data': {
-                    'type': 'FeatureCollection',
-                    'features': []
-                }
-            });
-
-            // Add heatmap layer
-            map.current.addLayer({
-                'id': 'building-distance-heatmap',
-                'type': 'heatmap',
-                'source': 'distance-heatmap',
-                'paint': {
-                    'heatmap-weight': [
-                        'interpolate',
-                        ['linear'],
-                        ['get', 'intensity'],
-                        0, 0,
-                        1, 2
-                    ],
-                    'heatmap-intensity': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 0.5,
-                        15, 1
-                    ],
-                    'heatmap-color': [
-                        'interpolate',
-                        ['linear'],
-                        ['heatmap-density'],
-                        0, 'rgba(236, 22, 22, 0)',
-                        0.2, 'rgba(236, 22, 22, 0.7)',
-                        0.4, 'rgba(255, 195, 0, 0.8)',
-                        0.8, 'rgba(255, 140, 0, 0.9)',  // Changed to orange
-                        1, 'rgba(255, 120, 0, 1)'       // Changed to deeper orange
-                    ],
-                    'heatmap-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        12, 20,
-                        15, 35
-                    ],
-                    'heatmap-opacity': 0.08
-                }
-            }, 'green-building-lines');
-
-            // Function to update heatmap data
-            function updateHeatmap() {
-                if (!map.current) return;
-
-                const buildings = map.current.queryRenderedFeatures({
-                    layers: ['3d-buildings']
-                });
-
-                const greenBuildings = buildings.filter(building => {
-                    const buildingId = building.properties.id || building.id;
-                    if (!buildingId) return false;
-                    
-                    const state = map.current.getFeatureState({
-                        source: 'composite',
-                        sourceLayer: 'building',
-                        id: buildingId
-                    });
-                    return state.isGreen === true;
-                });
-
-                const points = [];
-                
-                // Create points around each green building
-                greenBuildings.forEach(building => {
-                    if (!building.geometry || !building.geometry.coordinates) return;
-                    
-                    const buildingCoords = building.geometry.coordinates[0];
-                    const centroid = [
-                        buildingCoords.reduce((sum, coord) => sum + coord[0], 0) / buildingCoords.length,
-                        buildingCoords.reduce((sum, coord) => sum + coord[1], 0) / buildingCoords.length
-                    ];
-
-                    // Create a circular pattern of points around each building
-                    const numRings = 15;
-                    const pointsPerRing = 12;
-                    const maxRadius = 0.003; // Maximum radius of influence
-
-                    for (let ring = 0; ring < numRings; ring++) {
-                        const radius = (ring / numRings) * maxRadius;
-                        for (let point = 0; point < pointsPerRing; point++) {
-                            const angle = (point / pointsPerRing) * Math.PI * 2;
-                            const lng = centroid[0] + Math.cos(angle) * radius;
-                            const lat = centroid[1] + Math.sin(angle) * radius;
-                            
-                            // Intensity decreases with distance from center
-                            const intensity = Math.pow(1 - (ring / numRings), 2);
-                            
-                            points.push({
-                                'type': 'Feature',
-                                'properties': {
-                                    'intensity': intensity
-                                },
-                                'geometry': {
-                                    'type': 'Point',
-                                    'coordinates': [lng, lat]
-                                }
-                            });
-                        }
-                    }
-
-                    // Add center point with maximum intensity
-                    points.push({
-                        'type': 'Feature',
-                        'properties': {
-                            'intensity': 1
-                        },
-                        'geometry': {
-                            'type': 'Point',
-                            'coordinates': centroid
-                        }
-                    });
-                });
-
-                // Update the heatmap source
-                if (map.current.getSource('distance-heatmap')) {
-                    map.current.getSource('distance-heatmap').setData({
-                        type: 'FeatureCollection',
-                        features: points
-                    });
-                }
-            }
-
-            // Add event listeners for heatmap updates
-            map.current.on('moveend', updateHeatmap);
-            map.current.on('zoom', updateHeatmap);
-            map.current.on('style.load', updateHeatmap);
-
-            // Initial update
-            updateHeatmap();
-
-            // Start animation after initialization
-            startAnimation();
+      });
+    });
+
+    console.log('Buildings with POIs:', buildingPOIs);
+
+    // Store the building POIs in the global storage
+    storedHighlights.buildings = buildingPOIs;
+    highlightedBuildingsData.current = storedHighlights;
+
+    // Create heat map data points from POIs
+    const heatMapFeatures = relevantPois.map(poi => ({
+      type: 'Feature',
+      properties: {
+        poiCount: buildingPOIs.get(poi.id) || 1
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: poi.geometry.coordinates
+      }
+    }));
+
+    // Update heat map source
+    if (map.current.getSource('poi-heat')) {
+      map.current.getSource('poi-heat').setData({
+        type: 'FeatureCollection',
+        features: heatMapFeatures
+      });
+    }
+
+    // Adjust heat map intensity based on Claude's response
+    const applyHighlights = () => {
+      if (!highlightedBuildingsData.current) return;
+      
+      const { buildings } = highlightedBuildingsData.current;
+      
+      // Update the 3D buildings layer paint properties
+      if (map.current.getLayer('3d-buildings')) {
+        map.current.setPaintProperty('3d-buildings', 'fill-extrusion-color', [
+          'case',
+          ['boolean', ['feature-state', 'isHighlighted'], false],
+          [
+            'interpolate',
+            ['linear'],
+            ['feature-state', 'poiCount'],
+            1, '#FFB74D',  // Light orange for single POI
+            5, '#FF4500'   // Deep orange for many POIs
+          ],
+          '#1a1a1a'  // Much darker gray for non-highlighted buildings
+        ]);
+      }
+
+      // Apply the highlight state to the buildings
+      buildings.forEach((poiCount, buildingId) => {
+        map.current.setFeatureState(
+          { source: 'composite', sourceLayer: 'building', id: buildingId },
+          { 
+            isHighlighted: true,
+            poiCount: poiCount
+          }
+        );
+      });
+
+      // Update heat map intensity based on POI density
+      const maxPoiCount = Math.max(...Array.from(buildingPOIs.values()));
+      const intensityFactor = Math.min(maxPoiCount / 3, 2); // Cap at 2x intensity
+
+      map.current.setPaintProperty('poi-heat', 'heatmap-intensity', [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        12, 0.5 * intensityFactor,
+        15, 1.5 * intensityFactor
+      ]);
+    };
+
+    // Apply highlights initially
+    applyHighlights();
+
+    // Remove existing handlers if any
+    if (moveHandler.current) {
+      map.current.off('moveend', moveHandler.current);
+    }
+    if (zoomHandler.current) {
+      map.current.off('zoom', zoomHandler.current);
+    }
+
+    // Add handlers for both zoom and movement
+    moveHandler.current = applyHighlights;
+    zoomHandler.current = applyHighlights;
+    
+    map.current.on('moveend', moveHandler.current);
+    map.current.on('zoom', zoomHandler.current);
+
+    // Inside your handleBuildingClick function where animation starts
+    if (highlightedBuildingsData.current?.buildings?.size > 0) {
+        if (animationFrame.current) {
+            cancelAnimationFrame(animationFrame.current);
         }
+        
+        animationFrame.current = requestAnimationFrame(() => 
+            animateParticles({ 
+                map: map.current,
+                highlightedBuildings: highlightedBuildingsData.current
+            })
+        );
+    }
+  };
 
-        // Cleanup function
-        return () => {
-            if (map.current) {
-                map.current.remove();
-            }
-        };
-    }, [startAnimation, stopAnimation]); // Add animation controls to dependencies
+  // Add this useEffect for circle layers
+  useEffect(() => {
+    if (!map.current) return;
 
-    // Clean up function
-    useEffect(() => {
-        return () => {
-            buildingStates.current.clear();
-        };
-    }, []);
+    const initializeAreaHighlights = () => {
+      // Add a source for the area circles
+      map.current.addSource('area-highlights', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: []
+        }
+      });
 
-    // Add click handler for buildings
-    useEffect(() => {
-      if (!map.current) return;
+      // Add circle layer
+      map.current.addLayer({
+        id: 'area-circles',
+        type: 'circle',
+        source: 'area-highlights',
+        paint: {
+          'circle-radius': 100,
+          'circle-color': '#FF4500',
+          'circle-opacity': 0.2,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#FF4500'
+        }
+      });
 
-      map.current.on('click', '3d-buildings', handleMapClick);
-
-      // Add cursor styling
-      map.current.on('mouseenter', '3d-buildings', () => {
+      // Add hover effects
+      map.current.on('mouseenter', 'area-circles', () => {
         map.current.getCanvas().style.cursor = 'pointer';
       });
 
-      map.current.on('mouseleave', '3d-buildings', () => {
+      map.current.on('mouseleave', 'area-circles', () => {
         map.current.getCanvas().style.cursor = '';
       });
 
-      return () => {
-        // Cleanup event listeners
-        if (map.current) {
-          map.current.off('click', '3d-buildings', handleMapClick);
-          map.current.off('mouseenter', '3d-buildings');
-          map.current.off('mouseleave', '3d-buildings');
+      // Add click handler
+      map.current.on('click', 'area-circles', (e) => {
+        if (!e.features[0]) return;
+        
+        const properties = e.features[0].properties;
+        const coordinates = e.features[0].geometry.coordinates;
+
+        new mapboxgl.Popup()
+          .setLngLat(coordinates)
+          .setHTML(`
+            <h3>${properties.name}</h3>
+            <p>${properties.description}</p>
+          `)
+          .addTo(map.current);
+      });
+    };
+
+    map.current.once('load', initializeAreaHighlights);
+  }, []);
+
+  // Update the click handler useEffect
+  useEffect(() => {
+    if (!map.current || clickHandlerInitialized) return;
+
+    const handleGEOIDClick = (e) => {
+      e.preventDefault?.(); // Optional chaining in case preventDefault doesn't exist
+      
+      if (e.originalEvent) {
+        e.originalEvent.preventDefault();
+        e.originalEvent.stopPropagation();
+        e.originalEvent.stopImmediatePropagation();
+      }
+      
+      // Cancel the event in Mapbox
+      e.cancel();
+      
+      // Get the clicked GEOID feature if needed
+      const features = map.current.queryRenderedFeatures(e.point, {
+        layers: brickellGEOIDs.map(id => `hatched-area-${id}`)
+      });
+      
+      if (features.length > 0) {
+        console.log('🎯 Clicked GEOID layer:', features[0].properties.GEOID);
+      }
+
+      // Prevent map interaction
+      map.current.dragPan.disable();
+      map.current.scrollZoom.disable();
+      
+      // Re-enable after a short delay
+      setTimeout(() => {
+        map.current.dragPan.enable();
+        map.current.scrollZoom.enable();
+      }, 300);
+
+      return false;
+    };
+
+    // Make sure we initialize the handlers after the layers are added
+    const initializeHandlers = () => {
+      // Add click handlers for each GEOID layer
+      brickellGEOIDs.forEach(geoid => {
+        const layerId = `hatched-area-${geoid}`;
+        if (map.current.getLayer(layerId)) {
+          // Remove any existing handlers first
+          map.current.off('click', layerId, handleGEOIDClick);
+          // Add the click handler
+          map.current.on('click', layerId, handleGEOIDClick);
         }
-      };
-    }, [handleMapClick]);
+      });
 
-    return (
-      <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
-        <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-            {selectedBuilding && (
-          <>
-            <button
-              onClick={() => {
-                setSelectedBuilding(null);
-              }}
-                    style={{
-                        position: 'absolute',
-                left: '470px',
-                top: '10px',
-                background: 'rgba(0, 0, 0, 0.7)',
-                border: 'none',
-                color: '#fff',
-                width: '30px',
-                height: '30px',
-                borderRadius: '50%',
-                cursor: 'pointer',
-                zIndex: 1000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              ✕
-            </button>
-            <BuildingPopup
-              selectedArticle={selectedBuilding}
-              handleBackToOriginal={() => setSelectedBuilding(null)}
-              handleValidate={() => {}}
-              handleMatchResults={() => {}}
-              showComparison={false}
-              validationError={null}
-              isValidating={false}
-              retryCount={0}
-              MAX_RETRIES={3}
-              lastValidationTime={null}
-              showTypewriter={false}
-              matchedResults={[]}
-              validatedData={null}
-              validationScore={0}
-              handleAnalysis={() => {}}
-              onCogentClick={() => {}}
-              cogentActive={cogentActive}
-            />
-          </>
-            )}
-        </div>
-    );
-};
+      // Also prevent zoom when clicking the PMT boundaries
+      if (map.current.getLayer('pmt-boundaries')) {
+        map.current.off('click', 'pmt-boundaries');
+        map.current.on('click', 'pmt-boundaries', (e) => {
+          e.preventDefault?.();
+          e.cancel();
+          
+          if (e.originalEvent) {
+            e.originalEvent.preventDefault();
+            e.originalEvent.stopPropagation();
+            e.originalEvent.stopImmediatePropagation();
+          }
 
-MapComponent.propTypes = {
-  onArticleUpdate: PropTypes.func
+          // Temporarily disable map interactions
+          map.current.dragPan.disable();
+          map.current.scrollZoom.disable();
+          
+          setTimeout(() => {
+            map.current.dragPan.enable();
+            map.current.scrollZoom.enable();
+          }, 300);
+
+          return false;
+        });
+      }
+    };
+
+    // Initialize handlers when map is loaded
+    if (map.current.loaded()) {
+      initializeHandlers();
+    } else {
+      map.current.once('load', initializeHandlers);
+    }
+
+    setClickHandlerInitialized(true);
+
+    // Cleanup function
+    return () => {
+      if (map.current) {
+        brickellGEOIDs.forEach(geoid => {
+          const layerId = `hatched-area-${geoid}`;
+          if (map.current.getLayer(layerId)) {
+            map.current.off('click', layerId, handleGEOIDClick);
+          }
+        });
+        map.current.off('click', 'pmt-boundaries');
+      }
+    };
+  }, [map.current, clickHandlerInitialized]);
+
+  useEffect(() => {
+    if (map.current && !poiToggleRef.current) {
+      poiToggleRef.current = createPOIToggle(
+        map, 
+        map.current.getContainer(),
+        showPOIMarkers
+      );
+    }
+
+    return () => {
+      if (poiToggleRef.current) {
+        poiToggleRef.current.cleanup();
+        poiToggleRef.current = null;
+      }
+    };
+  }, [map.current]);
+
+  // Update toggle when state changes
+  useEffect(() => {
+    if (poiToggleRef.current) {
+      poiToggleRef.current.setVisibility(showPOIMarkers);
+    }
+  }, [showPOIMarkers]);
+
+  // Move the event listeners into a useEffect
+  useEffect(() => {
+    if (!map.current) return;
+
+    const handlePMTClick = (e) => {
+        console.log('🎯 Click detected on map');
+        
+        const clearExistingElements = () => {
+            const existingMarkers = document.querySelectorAll('.mapboxgl-marker');
+            existingMarkers.forEach(marker => marker.remove());
+            
+            const existingCallouts = document.querySelectorAll('.callout-annotation');
+            existingCallouts.forEach(callout => callout.remove());
+            
+            if (map.current.getSource('area-highlights')) {
+                map.current.getSource('area-highlights').setData({
+                    type: 'FeatureCollection',
+                    features: []
+                });
+            }
+
+            if (map.current.getLayer('area-highlights-outline')) {
+                map.current.removeLayer('area-highlights-outline');
+            }
+        };
+
+        clearExistingElements();
+        
+        const features = map.current.queryRenderedFeatures(e.point, {
+            layers: ['pmt-boundaries']
+        });
+        
+        if (features.length > 0) {
+            const clickedFeature = features[0];
+            console.log('🎯 Clicked GEOID:', clickedFeature.properties.GEOID);
+            console.log('📍 Feature properties:', clickedFeature.properties);
+        }
+        
+        const brickellCenter = [-80.2088, 25.7647];
+        const zoomLevel = 13.8;
+        
+        console.log('🎯 Zooming to Brickell:', brickellCenter);
+
+        map.current.flyTo({
+            center: brickellCenter,
+            zoom: zoomLevel,
+            duration: 1000,
+            essential: true
+        });
+
+        map.current.once('moveend', () => {
+          map.current.once('idle', () => {
+            if (map.current.getLayer('pmt-boundaries')) {
+              currentFilter.current = ['in', ['get', 'GEOID'], ['literal', brickellGEOIDs]];
+              map.current.setFilter('pmt-boundaries', currentFilter.current);
+              
+              // Show PMT boundaries
+              map.current.setLayoutProperty('pmt-boundaries', 'visibility', 'visible');
+              map.current.setPaintProperty('pmt-boundaries', 'fill-color', 'rgba(0, 0, 0, 0)');
+              map.current.setPaintProperty('pmt-boundaries', 'fill-outline-color', '#FF4500');
+              map.current.setPaintProperty('pmt-boundaries', 'fill-opacity', 1);
+
+                    setTimeout(() => {
+                        // Add the hatch patterns
+                        const size = 16;
+                        const patterns = [
+                            {
+                                id: 'light-diagonal',
+                                angle: 45,
+                                lineWidth: 0.3,
+                                opacity: 0.25,
+                                spacing: 6
+                            },
+                            {
+                                id: 'dots-fine',
+                                type: 'dots',
+                                lineWidth: 0.2,
+                                opacity: 0.2,
+                                spacing: 8
+                            },
+                            {
+                                id: 'thin-lines',
+                                angle: 0,
+                                lineWidth: 0.4,
+                                opacity: 0.18,
+                                spacing: 5
+                            },
+                            {
+                                id: 'fine-grid',
+                                angles: [0, 90],
+                                lineWidth: 0.15,
+                                opacity: 0.15,
+                                spacing: 7
+                            },
+                            {
+                                id: 'sparse-dots',
+                                type: 'dots',
+                                lineWidth: 0.15,
+                                opacity: 0.2,
+                                spacing: 12
+                            },
+                            {
+                                id: 'thin-cross',
+                                angles: [45, -45],
+                                lineWidth: 0.4,
+                                opacity: 0.42,
+                                spacing: 10
+                            },
+                            {
+                                id: 'vertical-thin',
+                                angle: 90,
+                                lineWidth: 0.2,
+                                opacity: 0.65,
+                                spacing: 6
+                            }
+                        ];
+
+                        // Create and add patterns
+                        patterns.forEach(pattern => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = size;
+                            canvas.height = size;
+                            const ctx = canvas.getContext('2d');
+
+                            // Clear the canvas with a background
+                            ctx.fillStyle = `rgba(255, 69, 0, ${pattern.opacity})`;
+                            ctx.fillRect(0, 0, size, size);
+                            
+                            if (pattern.type === 'dots') {
+                                ctx.beginPath();
+                                ctx.fillStyle = '#FF4500';
+                                ctx.arc(size/2, size/2, pattern.lineWidth || 1, 0, Math.PI * 2);
+                                ctx.fill();
+                            } else if (pattern.angles) {
+                                ctx.beginPath();
+                                ctx.strokeStyle = '#FF4500';
+                                ctx.lineWidth = pattern.lineWidth || 0.5;
+                                pattern.angles.forEach(angle => {
+                                    ctx.save();
+                                    ctx.translate(size/2, size/2);
+                                    ctx.rotate(angle * Math.PI / 180);
+                                    ctx.translate(-size/2, -size/2);
+                                    ctx.moveTo(0, 0);
+                                    ctx.lineTo(size, size);
+                                    ctx.restore();
+                                });
+                                ctx.stroke();
+                            } else {
+                                ctx.beginPath();
+                                ctx.strokeStyle = '#FF4500';
+                                ctx.lineWidth = pattern.lineWidth || 0.5;
+                                ctx.save();
+                                ctx.translate(size/2, size/2);
+                                ctx.rotate(pattern.angle * Math.PI / 180);
+                                ctx.translate(-size/2, -size/2);
+                                ctx.moveTo(0, 0);
+                                ctx.lineTo(size, size);
+                                ctx.restore();
+                                ctx.stroke();
+                            }
+
+                            if (map.current.hasImage(pattern.id)) {
+                                map.current.removeImage(pattern.id);
+                            }
+                            map.current.addImage(pattern.id, ctx.getImageData(0, 0, size, size), {
+                                pixelRatio: 2
+                            });
+                        });
+
+                        // Add layers for each GEOID
+                        brickellGEOIDs.forEach((geoid, index) => {
+                            const patternId = patterns[index % patterns.length].id;
+                            const layerId = `hatched-area-${geoid}`;
+
+                            if (map.current.getLayer(layerId)) {
+                                map.current.removeLayer(layerId);
+                            }
+
+                            map.current.addLayer({
+                                'id': layerId,
+                                'type': 'fill',
+                                'source': 'pmt-boundaries',
+                                'paint': {
+                                    'fill-pattern': patternId,
+                                    'fill-opacity': 0,
+                                    'fill-opacity-transition': {
+                                        duration: 83,
+                                        delay: index * 8
+                                    }
+                                },
+                                'filter': ['==', ['get', 'GEOID'], geoid]
+                            }, 'pmt-boundaries');
+
+                            setTimeout(() => {
+                                map.current.setPaintProperty(
+                                    layerId,
+                                    'fill-opacity',
+                                    1
+                                );
+                            }, index * 8);
+                        });
+                        
+                        setTimeout(() => {
+                            addGeoIdTags(map.current, brickellGEOIDs, setIsGeoIDVisible);
+                            console.log('🏷️ GEOID tags added');
+                        }, 500);
+                    }, 200);
+
+                    // Hide other layers
+                    ['subdivision-boundaries', 'area-circles', 'area-highlights-outline'].forEach(layer => {
+                        if (map.current.getLayer(layer)) {
+                            map.current.setLayoutProperty(layer, 'visibility', 'none');
+                        }
+                    });
+                }
+            });
+        });
+    };
+
+    const handlePMTMouseLeave = () => {
+        if (map.current && currentFilter.current) {
+            map.current.setFilter('pmt-boundaries', currentFilter.current);
+        }
+    };
+
+    // Set up event listeners
+    map.current.on('click', 'pmt-boundaries', handlePMTClick);
+    map.current.on('mouseleave', 'pmt-boundaries', handlePMTMouseLeave);
+
+    // Cleanup function
+    return () => {
+        if (map.current) {
+            map.current.off('click', 'pmt-boundaries', handlePMTClick);
+            map.current.off('mouseleave', 'pmt-boundaries', handlePMTMouseLeave);
+        }
+    };
+}, [map.current]);
+
+  // Update the map initialization useEffect
+  useEffect(() => {
+    if (!map.current) return;
+
+    map.current.on('load', () => {
+      initializePOILayers(map.current);
+      setPoiLayerInitialized(true);
+      setupAnimation(map.current, setIsGeoIDVisible);
+    });
+  }, [map.current]);
+
+  const applyHighlights = () => {
+    if (!map.current || !poiLayerInitialized) return;
+    applyPOIHighlights(map.current);
+  };
+
+  // Add this helper function
+  const getBrickellChatResponse = () => {
+    return {
+      action: "navigate",
+      coordinates: [-80.1998, 25.765],
+      zoomLevel: 15,
+      quickActions: [
+        {
+          text: "Demographic Stats",
+          prompt: "SHOW_BRICKELL_DEMOGRAPHICS",
+          icon: "📊",
+          description: "Income, age, education data"
+        },
+        {
+          text: "Historical Trends",
+          prompt: "SHOW_BRICKELL_HISTORY", 
+          icon: "📈",
+          description: "Development since 2010"
+        },
+        {
+          text: "AI Predictions",
+          prompt: "SHOW_BRICKELL_FORECAST",
+          icon: "🔮", 
+          description: "Growth forecast 2024-2025"
+        }
+      ],
+      preGraphText: "As we saw in the economic trends, Brickell has emerged as Miami's premier dining destination. Let's take a closer look at what makes this area special.",
+      postGraphText: "The data shows a remarkable concentration of high-end establishments, with over 45 restaurants and bars in this district alone. The area's rapid growth has attracted both Michelin-starred chefs and innovative local restaurateurs.",
+      poiInfo: {
+        pmtId: "brickell_pmt",
+        subdivisionId: "brickell_main",
+        poiCount: 45,
+        poiTypes: ["restaurant", "bar", "nightclub", "cafe"]
+      },
+      followUpSuggestions: [
+        {
+          text: "Show me the rooftop bars",
+          prompt: "Show rooftop bars in Brickell"
+        },
+        {
+          text: "Find fine dining spots",
+          prompt: "List upscale restaurants in Brickell"
+        },
+        {
+          text: "Compare to South Beach",
+          prompt: "Compare Brickell vs South Beach restaurants"
+        }
+      ]
+    };
+  };
+
+  // Update the handlePMTClick function
+  const handlePMTClick = (e) => {
+    if (e.features[0].properties.name === "Brickell") {
+      // Add the chat message
+      const brickellResponse = getBrickellChatResponse();
+      setMessages(prev => [...prev, {
+        isUser: false,
+        content: brickellResponse
+      }]);
+
+      // Handle map navigation and highlighting
+      handleLLMResponse(brickellResponse);
+    }
+  };
+
+  // Inside your click handler where the callout is clicked
+  const handleCalloutClick = () => {
+    console.log('🎯 Callout clicked - showing Brickell demographics');
+    
+    // Create the demographics message
+    const demographicsMessage = {
+      action: "showDemographics",
+      preGraphText: "Here's a demographic breakdown of Brickell:",
+      postGraphText: "Brickell's population has grown significantly:\n\n" +
+                   "• Current Population: 32,547\n" +
+                   "• Median Age: 34\n" +
+                   "• Household Income: $121,500\n" +
+                   "• Population Density: 27,890/sq mi\n" +
+                   "• Growth Rate: +12.4% (2023)\n\n" +
+                   "This makes it one of Miami's fastest-growing urban cores.",
+      quickActions: [
+        {
+          text: "Compare to South Beach",
+          prompt: "COMPARE_BRICKELL_SOUTH_BEACH",
+          icon: "↗",
+          description: "Population comparison"
+        },
+        {
+          text: "Show Growth Trends",
+          prompt: "SHOW_BRICKELL_GROWTH",
+          icon: "📈",
+          description: "Historical growth data"
+        },
+        {
+          text: "Future Forecast",
+          prompt: "SHOW_FUTURE_TRENDS",
+          icon: "🔮",
+          description: "2024 projections"
+        }
+      ]
+    };
+    
+    // Add to messages state directly
+    setMessages(prev => [...prev, {
+      isUser: false,
+      content: demographicsMessage
+    }]);
+    
+    console.log('💬 Added demographics message to chat');
+  };
+
+  // Update the useEffect to properly attach the click handler
+  useEffect(() => {
+    const addCalloutClickHandler = () => {
+      const callout = document.querySelector('.callout-annotation');
+      if (callout) {
+        console.log('🎯 Adding click handler to callout');
+        callout.addEventListener('click', handleCalloutClick);
+        
+        // Make sure cursor changes on hover
+        callout.style.cursor = 'pointer';
+      }
+    };
+    
+    // Add handler initially
+    addCalloutClickHandler();
+    
+    // Also add handler whenever map moves/zooms
+    if (map.current) {
+      map.current.on('moveend', addCalloutClickHandler);
+      map.current.on('zoomend', addCalloutClickHandler);
+    }
+    
+    return () => {
+      const callout = document.querySelector('.callout-annotation');
+      if (callout) {
+        callout.removeEventListener('click', handleCalloutClick);
+      }
+      if (map.current) {
+        map.current.off('moveend', addCalloutClickHandler);
+        map.current.off('zoomend', addCalloutClickHandler);
+      }
+    };
+  }, []);
+
+  // Update the existing useEffect for GEOID visibility
+  useEffect(() => {
+    console.log('🔄 isGeoIDVisible state changed:', isGeoIDVisible);
+  }, [isGeoIDVisible]);
+
+  // Update useEffect for GEOID visibility
+  useEffect(() => {
+    if (!map.current) return;
+    
+    if (isGeoIDVisible) {
+        // Initialize GEOID particles first
+        initializeGEOIDParticleLayers(map.current);
+        
+        // Start animation
+        window.geoIdAnimationFrame = animateGEOIDParticles({
+            map: map.current,
+            geoIdFeatures: brickellGEOIDs,
+            isActive: true
+        });
+    } else {
+        // Stop and cleanup animation
+        stopGEOIDAnimation(map.current);
+    }
+
+    // Cleanup function
+    return () => {
+        if (window.geoIdAnimationFrame) {
+            cancelAnimationFrame(window.geoIdAnimationFrame);
+            window.geoIdAnimationFrame = null;
+        }
+        if (map.current) {
+            stopGEOIDAnimation(map.current);
+        }
+    };
+}, [isGeoIDVisible]);
+
+  // Update handleExploreGrid function
+  const handleExploreGrid = () => {
+    if (map.current) {
+        // First ensure GEOID animation is stopped
+        setIsGeoIDVisible(false);
+        stopGEOIDAnimation(map.current);
+        
+        // Remove any existing particle layers
+        if (map.current.getLayer('geoid-particles')) {
+            map.current.removeLayer('geoid-particles');
+        }
+        if (map.current.getSource('geoid-particles')) {
+            map.current.removeSource('geoid-particles');
+        }
+        
+        // Then transition to grid view
+        transitionToGridView(map.current);
+        
+        // Highlight POI buildings
+        highlightPOIBuildings(['substation', 'transformer', 'solar_array', 'smart_meter']);
+        
+        handleQuestion("SHOW_BRICKELL_GRID");
+    }
+  };
+
+  // Modify the handleLLMResponse function
+  const handleLLMResponse = (response) => {
+    if (!map.current) return;
+
+    // Clear existing popups, markers and highlights
+    const clearExistingElements = () => {
+      const existingPopups = document.querySelectorAll('.mapboxgl-popup');
+      existingPopups.forEach(popup => popup.remove());
+      
+      const existingCallouts = document.querySelectorAll('.callout-annotation');
+      existingCallouts.forEach(callout => callout.remove());
+      
+      // Clear all mapboxgl markers
+      const markers = document.querySelectorAll('.mapboxgl-marker');
+      markers.forEach(marker => marker.remove());
+      
+      // Clear area highlights source
+      if (map.current.getSource('area-highlights')) {
+        map.current.getSource('area-highlights').setData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+    };
+
+    if (response?.action === 'showMultipleLocations' && response.locations) {
+      clearExistingElements();
+      
+      // Clear area highlights immediately
+      if (map.current.getSource('area-highlights')) {
+        map.current.getSource('area-highlights').setData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+
+      // Remove highlight outline layer if it exists
+      if (map.current.getLayer('area-highlights-outline')) {
+        map.current.removeLayer('area-highlights-outline');
+      }
+
+      const source = map.current.getSource('area-highlights');
+      if (!source) {
+        console.warn('Area highlights source not initialized');
+        return;
+      }
+
+      // Create features for the circles
+      const features = response.locations.map(location => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: location.coordinates
+        },
+        properties: {
+          name: location.name,
+          description: location.description
+        }
+      }));
+
+      // Add the circle layer with orange outline
+      if (!map.current.getLayer('area-highlights-outline')) {
+        map.current.addLayer({
+          'id': 'area-highlights-outline',
+          'type': 'circle',
+          'source': 'area-highlights',
+          'paint': {
+            'circle-radius': 100,
+            'circle-color': 'transparent',
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#FF4500',
+            'circle-opacity': 0.8
+          }
+        });
+      }
+
+     
+      // Update the source data
+      source.setData({
+        type: 'FeatureCollection',
+        features: features
+      });
+
+      // Add location markers (modified to remove popups)
+      features.forEach(feature => {
+        const marker = new mapboxgl.Marker({
+          color: "#FF4500"
+        })
+          .setLngLat(feature.geometry.coordinates)
+          .addTo(map.current);
+      });
+
+      // Add callouts for each location
+      features.forEach(feature => {
+        const location = response.locations.find(loc => loc.name === feature.properties.name);
+        if (!location) return;
+
+        const calloutHTML = document.createElement('div');
+        calloutHTML.className = 'callout-annotation';
+        calloutHTML.innerHTML = `
+          <div style="
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+            position: relative;
+            font-family: 'SF Mono', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+          ">
+            <div style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              margin-bottom: 8px;
+            ">
+              <h3 style="
+                margin: 0;
+                color: white;
+                font-size: 16px;
+                font-weight: 500;
+              ">${location.name}</h3>
+              <span style="display: flex; gap: 12px; color: #FF4500;">
+                ${location.icons.square ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>' : ''}
+                ${location.icons.chart ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6h-6z"/></svg>' : ''}
+                ${location.icons.circle ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>' : ''}
+              </span>
+            </div>
+            <div style="
+              font-size: 13px;
+              color: rgba(255, 255, 255, 0.8);
+              margin-top: 12px;
+              padding-left: 8px;
+              border-left: 2px solid rgba(76, 175, 80, 0.5);
+            ">${location.callout.details.join('<br>')}</div>
+          </div>
+        `;
+
+        // Add the callout with proper positioning
+        new mapboxgl.Marker({
+          element: calloutHTML,
+          anchor: 'left',
+        })
+          .setLngLat(feature.geometry.coordinates)
+          .setOffset([100, location.name === "Brickell" ? 100 : -100])
+          .addTo(map.current);
+      });
+
+      // Fit map to show both locations
+      if (response.viewBounds) {
+        map.current.fitBounds([
+          response.viewBounds.sw,
+          response.viewBounds.ne
+        ], {
+          padding: 50,
+          duration: 2000
+        });
+      }
+    } else if (response?.coordinates) {
+      // Clear everything immediately
+      clearExistingElements();
+      
+      // Clear area highlights immediately
+      if (map.current.getSource('area-highlights')) {
+        map.current.getSource('area-highlights').setData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+
+      // Then proceed with zooming
+      if (mapState.clickState.blockAllClicks || mapState.clickState.blockZoom) {
+        console.log('🚫 Skipping zoom - interaction in progress');
+        return;
+      }
+
+      console.log('🎯 Zooming to Brickell:', response.coordinates);
+      map.current.flyTo({
+        center: response.coordinates,
+        zoom: response.zoomLevel,
+        duration: 1000
+      });
+
+      // Wait for the map to finish moving
+      map.current.once('moveend', () => {
+        map.current.once('idle', () => {
+          // Dim all GEOID layers after zoom completes
+          brickellGEOIDs.forEach((geoid) => {
+            const layerId = `hatched-area-${geoid}`;
+            if (map.current.getLayer(layerId)) {
+              // Animate opacity transition
+              let startTime = performance.now();
+              const animationDuration = 500; // 500ms transition
+
+              function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / animationDuration, 1);
+                
+                // Ensure opacity is never negative
+                const newOpacity = Math.max(0, 1 - (progress * 0.7)); // Transition to 30% opacity
+
+                map.current.setPaintProperty(
+                  layerId,
+                  'fill-opacity',
+                  newOpacity
+                );
+
+                if (progress < 1) {
+                  requestAnimationFrame(animate);
+                }
+              }
+
+              requestAnimationFrame(animate);
+            }
+          });
+
+          // After dimming GEOIDs, highlight buildings with POIs
+          highlightPOIBuildings(['restaurant', 'bar', 'nightclub'], '#FF4500');
+          
+          // Turn off POI markers after highlighting buildings
+          setShowPOIMarkers(false);
+          if (map.current) {
+            map.current.setLayoutProperty('miami-pois', 'visibility', 'none');
+          }
+        });
+      });
+    }
+  };
+
+  return (
+    <MapContainer>
+      <div 
+        ref={mapContainer} 
+        style={{ 
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0
+        }} 
+      />
+      
+      <AIChatPanel 
+        messages={messages}
+        setMessages={setMessages}
+        isLoading={isLoading}
+        loadingMessage={loadingMessage}
+        inputValue={inputValue}
+        setInputValue={setInputValue}
+        handleQuestion={handleQuestion}
+        map={map}
+      />
+    </MapContainer>
+  );
 };
 
 export default MapComponent;

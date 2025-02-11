@@ -31,12 +31,14 @@ wheels/
 *.egg
 
 # Node/React
-node_modules/
-package-lock.json
-package.json
+**/node_modules/
+**/package-lock.json
+**/yarn.lock
 
 # Project Directories
 /flask-backend
+/server
+/proxy-server
 
 # macOS system files
 .DS_Store
@@ -56,27 +58,16 @@ PLAN.txt
 prism.txt
 atlas.egg-info/
 *.pt
-
-# Force include
-!.gitignore
-
-# Python cache files
-*.pyc
-*.pyo
-*.pyd
-
-# Test and cache directories
-.pytest_cache/
-cache/
-test_logs/
-metrics/
-atlas/test_logs/
-atlas/core/test_tracking/
+*.log
+*.geojson
+*.csv
 
 # Local development files
 .python-version
 .hintrc
 benchmark_output.json
 
-atlas/FinCore/
-atlas/FinCore/
+# Temporary/backup files
+**/*copy*.jsx
+**/*copy*.js
+**/OLD/
