@@ -1,6 +1,8 @@
 // Import necessary dependencies
-import { MIN_ZOOM, THROTTLE_TIME, PARTICLE_SIZE_JAX as PARTICLE_SIZE, PARTICLE_OPACITY_JAX as PARTICLE_OPACITY } from '../constants';
+import { MIN_ZOOM, THROTTLE_TIME, PARTICLE_SIZE_JAX as PARTICLE_SIZE, PARTICLE_OPACITY_JAX as PARTICLE_OPACITY, ROAD_GRID_CONFIG } from '../constants';
 import { center } from '@turf/turf';
+import styled, { keyframes } from 'styled-components';
+import { AnimatedDiv } from '../StyledComponents';
 
 export const initializeParticleLayers = (map) => {
     try {
@@ -227,7 +229,7 @@ export const createGreenLines = (map, buildingStates) => {
             'paint': {
                 'line-color': '#4CAF50',
                 'line-width': 2,
-                'line-opacity': 0.6,
+                'line-opacity': 0.2,
                 'line-blur': 3
             }
         });
@@ -631,4 +633,303 @@ export const transitionToGridView = (map) => {
     } catch (error) {
         console.error('❌ Error transitioning to grid view:', error);
     }
+};
+
+export const initializeRoadGrid = (map, options = {}) => {
+    // Clean up existing layers first
+    ['road-grid'].forEach(layerId => {
+        if (map.getLayer(layerId)) {
+            map.removeLayer(layerId);
+        }
+    });
+    
+    map.addLayer({
+        'id': 'road-grid',
+        'type': 'line',
+        'source': 'composite',
+        'source-layer': 'road',
+        'layout': {
+            'line-join': 'round',
+            'line-cap': 'round'
+        },
+        'paint': {
+            'line-color': ROAD_GRID_CONFIG.paint.color,
+            'line-width': ROAD_GRID_CONFIG.paint.width,
+            'line-opacity': ROAD_GRID_CONFIG.paint.opacity
+        },
+        'minzoom': ROAD_GRID_CONFIG.minZoom,
+        'maxzoom': ROAD_GRID_CONFIG.maxZoom,
+        ...options
+    });
+
+    return animateRoadGrid(map);
+};
+
+export const animateRoadGrid = (map) => {
+    let start;
+    let animationFrame;
+    
+    function animate(timestamp) {
+        if (!start) start = timestamp;
+        const progress = (timestamp - start) / 1000;
+        
+        if (map.getLayer('road-grid')) {
+            map.setPaintProperty('road-grid', 'line-dasharray', [
+                2,
+                4,
+                progress % 8
+            ]);
+        }
+        
+        animationFrame = requestAnimationFrame(animate);
+        return animationFrame;
+    }
+    
+    return animate(0);
+};
+
+export const cleanupRoadGrid = (map, animationFrame) => {
+    // Only proceed if map exists
+    if (!map) return;
+
+    // Stop animation if it exists
+    if (animationFrame) {
+        stopRoadAnimation(animationFrame);
+    }
+
+    // Remove layer if it exists
+    try {
+        if (map.getLayer('road-grid')) {
+            map.removeLayer('road-grid');
+        }
+    } catch (error) {
+        console.warn('Error cleaning up road grid:', error);
+    }
+};
+
+export const stopRoadAnimation = (frameId) => {
+    if (frameId) {
+        cancelAnimationFrame(frameId);
+    }
+};
+
+// Add these new exports
+export const initializeRoadParticles = (map) => {
+    try {
+        if (!map.getSource('road-particles')) {
+            map.addSource('road-particles', {
+                type: 'geojson',
+                data: {
+                    type: 'FeatureCollection',
+                    features: []
+                }
+            });
+        }
+
+        if (!map.getLayer('road-particles')) {
+            map.addLayer({
+                'id': 'road-particles',
+                'type': 'circle',
+                'source': 'road-particles',
+                'paint': {
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        8, 3,    // Larger size when zoomed out
+                        12, 2.5, // Medium size at city level
+                        16, 2    // Original size when zoomed in
+                    ],
+                    'circle-color': '#FFFFFF',
+                    'circle-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        8, 0.8,  // More visible when zoomed out
+                        12, 0.7,
+                        16, 0.6
+                    ],
+                    'circle-blur': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        8, 0.2,
+                        16, 0.5
+                    ]
+                },
+                'minzoom': 5  // Allow particles to show at much lower zoom levels
+            });
+        }
+    } catch (error) {
+        console.error('Error initializing road particles:', error);
+    }
+};
+
+export const animateRoadParticles = ({ map }) => {
+    try {
+        if (!window.roadLayers) {
+            const layers = map.getStyle().layers;
+            window.roadLayers = layers
+                .filter(layer => layer.id.includes('road') && layer.type === 'line')
+                .map(l => l.id);
+        }
+
+        if (!window.roadLayers.length) {
+            console.warn('No road layers found in map style');
+            return null;
+        }
+
+        const zoom = map.getZoom();
+        const bounds = map.getBounds();
+        const roads = map.queryRenderedFeatures({
+            layers: window.roadLayers,
+            bounds: bounds
+        });
+
+        const features = [];
+        const time = Date.now() * 0.00012;
+
+        // Adjust maxRoads based on zoom level
+        const maxRoads = Math.max(50, Math.min(200, Math.floor(zoom * 10)));
+        const stride = Math.max(1, Math.floor(roads.length / maxRoads));
+        
+        for (let i = 0; i < roads.length; i += stride) {
+            const road = roads[i];
+            if (!road.geometry?.coordinates) continue;
+
+            const coords = road.geometry.type === 'LineString' ? 
+                road.geometry.coordinates : 
+                road.geometry.coordinates[0];
+
+            if (!coords || coords.length < 2) continue;
+
+            // Adjust particle count based on zoom and road type
+            const baseCount = road.properties.class === 'motorway' ? 
+                Math.max(3, Math.min(8, Math.floor(zoom / 2))) : 
+                Math.max(2, Math.min(6, Math.floor(zoom / 3)));
+
+            for (let j = 0; j < baseCount; j++) {
+                const progress = (time + j * 0.12) % 1;
+                const index = Math.floor(progress * (coords.length - 1));
+                const nextIndex = (index + 1) % coords.length;
+
+                const pos = [
+                    coords[index][0] + (coords[nextIndex][0] - coords[index][0]) * (progress % 1),
+                    coords[index][1] + (coords[nextIndex][1] - coords[index][1]) * (progress % 1)
+                ];
+
+                features.push({
+                    type: 'Feature',
+                    properties: {
+                        color: '#FFFFFF',
+                        roadClass: road.properties.class
+                    },
+                    geometry: {
+                        type: 'Point',
+                        coordinates: pos
+                    }
+                });
+            }
+        }
+
+        const source = map.getSource('road-particles');
+        if (source) {
+            source.setData({
+                type: 'FeatureCollection',
+                features: features
+            });
+        }
+
+        return requestAnimationFrame(() => animateRoadParticles({ map }));
+    } catch (error) {
+        console.error('Error animating road particles:', error);
+        return null;
+    }
+};
+
+export const stopRoadParticles = (map) => {
+    try {
+        if (map.getLayer('road-particles')) {
+            map.removeLayer('road-particles');
+        }
+        if (map.getSource('road-particles')) {
+            map.removeSource('road-particles');
+        }
+    } catch (error) {
+        console.error('Error stopping road particles:', error);
+    }
+};
+
+// Panel animation functions
+export const initializePanelAnimations = (map) => {
+  return { AnimatedDiv };
+};
+
+export const handlePanelCollapse = (isCollapsed, map) => {
+  // Adjust map padding when panel collapses/expands
+  if (map.current) {
+    map.current.easeTo({
+      padding: { left: isCollapsed ? 0 : window.innerWidth * 0.35 },
+      duration: 300
+    });
+  }
+};
+
+export const handleLLMResponse = (map, response) => {
+  // Handle LLM response animation
+  if (response.type === 'ercot') {
+    // Add ERCOT-specific animations
+    map.setPaintProperty('ercot-layer', 'fill-opacity', 0.7);
+    map.setPaintProperty('ercot-layer', 'fill-color', '#FF4500');
+  }
+};
+
+export const clearExistingElements = (map) => {
+  // Clear existing animations and visual elements
+  const existingMarkers = document.querySelectorAll('.mapboxgl-marker');
+  existingMarkers.forEach(marker => marker.remove());
+  
+  const existingCallouts = document.querySelectorAll('.callout-annotation');
+  existingCallouts.forEach(callout => callout.remove());
+  
+  if (map.getSource('area-highlights')) {
+    map.getSource('area-highlights').setData({
+      type: 'FeatureCollection',
+      features: []
+    });
+  }
+};
+
+export const fetchErcotData = async (map) => {
+  // Fetch ERCOT data and handle animations
+  try {
+    const response = await fetch('/api/ercot');
+    const data = await response.json();
+    
+    // Add ERCOT layer animations
+    map.addLayer({
+      'id': 'ercot-layer',
+      'type': 'fill',
+      'source': 'ercot',
+      'paint': {
+        'fill-color': '#FF4500',
+        'fill-opacity': 0
+      }
+    });
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching ERCOT data:', error);
+    return null;
+  }
+};
+
+export const clearErcotMode = (map) => {
+  // Clear ERCOT mode animations
+  if (map.getLayer('ercot-layer')) {
+    map.removeLayer('ercot-layer');
+  }
+  if (map.getSource('ercot')) {
+    map.removeSource('ercot');
+  }
 }; 

@@ -22,6 +22,14 @@ export const MIAMI_BOUNDS = {
   west: -80.2867
 };
 
+// Houston boundaries
+export const HOUSTON_BOUNDS = {
+  north: 29.8837,
+  south: 29.6837,
+  east: -95.3577,
+  west: -95.7577
+};
+
 // Power infrastructure locations
 export const POWER_SUBSTATIONS = [
     { coordinates: [-77.0366, 38.9077], name: "Georgetown Substation" },
@@ -136,7 +144,7 @@ export const POWER_SUBSTATIONS_JAX = [
 
 export const MAIN_CORRIDORS_JAX = [
     {
-        start: [-81.6557, 30.3222], // Downtown
+        start: [-84.6557, 30.3222], // Downtown
         end: [-81.6557, 30.3122],   // San Marco
         density: 80  // Higher density for downtown corridor
     },
@@ -183,41 +191,108 @@ export const BUILDING_COLORS = {
 // Map configuration constants
 export const MAP_CONFIG = {
     style: 'mapbox://styles/mapbox/dark-v11',
-    center: [-80.2998, 25.7797],  // Miami coordinates
-    zoom: 11,  // Changed from 13 to 11 for a more zoomed out view
-    minZoom: 9,  // Changed from 11 to 9 to allow zooming out more
+    center: [-95.5577, 29.7837],  // Houston Energy Corridor coordinates
+    zoom: 8,
+    minZoom: 8.5,
     maxZoom: 17
 };
 
-// Power infrastructure locations for Miami
-export const POWER_SUBSTATIONS_MIAMI = [
-    { coordinates: [-80.1917, 25.7617], name: "Downtown Miami Substation" },
-    { coordinates: [-80.1927, 25.7897], name: "Wynwood Power Center" },
-    { coordinates: [-80.1307, 25.7897], name: "Miami Beach Grid Hub" },
-    { coordinates: [-80.2167, 25.7527], name: "Coral Gables Exchange" },
-    { coordinates: [-80.1917, 25.8107], name: "Design District Substation" },
-    { coordinates: [-80.1897, 25.7757], name: "Brickell Power Hub" }
+// Power infrastructure locations for Houston
+export const POWER_SUBSTATIONS_HOUSTON = [
+    { coordinates: [-95.5577, 29.7837], name: "Energy Corridor Main Substation" },
+    { coordinates: [-95.5427, 29.7697], name: "Westchase Power Center" },
+    { coordinates: [-95.5827, 29.7927], name: "Memorial Grid Hub" },
+    { coordinates: [-95.5327, 29.7737], name: "Eldridge Exchange" },
+    { coordinates: [-95.5677, 29.7937], name: "Terry Hershey Substation" },
+    { coordinates: [-95.5477, 29.7737], name: "CityCentre Power Hub" }
 ];
 
-export const MAIN_CORRIDORS_MIAMI = [
+export const MAIN_CORRIDORS_HOUSTON = [
     {
-        start: [-80.1917, 25.7617], // Downtown
-        end: [-80.1897, 25.7757],   // Brickell
-        density: 85  // High density for downtown-brickell corridor
+        start: [-95.5577, 29.7837], // Energy Corridor Main
+        end: [-95.5427, 29.7697],   // Westchase
+        density: 90  // Highest density for main energy corridor
     },
     {
-        start: [-80.1927, 25.7897], // Wynwood
-        end: [-80.1917, 25.8107],   // Design District
-        density: 75  // Art district corridor
+        start: [-95.5827, 29.7927], // Memorial
+        end: [-95.5677, 29.7937],   // Terry Hershey
+        density: 85  // High density energy district
     },
     {
-        start: [-80.1917, 25.7617], // Downtown
-        end: [-80.1307, 25.7897],   // Miami Beach
-        density: 80  // Beach corridor
+        start: [-95.5577, 29.7837], // Energy Corridor Main
+        end: [-95.5327, 29.7737],   // Eldridge
+        density: 80  // Major distribution corridor
     },
     {
-        start: [-80.1917, 25.7617], // Downtown
-        end: [-80.2167, 25.7527],   // Coral Gables
-        density: 70  // Coral Gables corridor
+        start: [-95.5427, 29.7697], // Westchase
+        end: [-95.5477, 29.7737],   // CityCentre
+        density: 75  // Secondary corridor
     }
+];
+
+// Update power infrastructure locations
+export const POWER_HOTSPOTS_HOUSTON = [
+  {
+    coordinates: [-95.5577, 29.7837],
+    strength: 1.0,
+    name: "Energy Corridor Hub"
+  },
+  {
+    coordinates: [-95.5427, 29.7697],
+    strength: 0.9,
+    name: "Westchase Complex"
+  },
+  {
+    coordinates: [-95.5827, 29.7927],
+    strength: 0.9,
+    name: "Memorial Energy Center"
+  },
+  {
+    coordinates: [-95.5327, 29.7737],
+    strength: 0.85,
+    name: "Eldridge Distribution"
+  }
+];
+
+export const HIGHLIGHTED_BUILDINGS_HOUSTON = [
+  {
+    center: [-95.5577, 29.7837],
+    radius: 150,
+    name: "Energy Corridor Complex"
+  },
+  {
+    center: [-95.5427, 29.7697],
+    radius: 120,
+    name: "Westchase Energy District"
+  },
+  {
+    center: [-95.5827, 29.7927],
+    radius: 100,
+    name: "Memorial Power Center"
+  },
+  {
+    center: [-95.5327, 29.7737],
+    radius: 130,
+    name: "Eldridge Industrial Zone"
+  }
+];
+
+// Add these road grid constants
+export const ROAD_GRID_CONFIG = {
+  minZoom: 5,
+  maxZoom: 22,
+  paint: {
+    color: '#ffffff',
+    width: 1.5,
+    opacity: 0.44
+  }
+};
+
+// Add loading message constants
+export const LOADING_MESSAGES = [
+  "Analyzing spatial data...",
+  "Processing urban patterns...",
+  "Calculating density metrics...",
+  "Mapping neighborhood features...",
+  "Evaluating development zones..."
 ];

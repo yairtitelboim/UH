@@ -1,6 +1,7 @@
 import { brickellGEOIDs } from '../constants/geoIds';
 import { addGeoIdTags } from '../utils';
 import mapboxgl from 'mapbox-gl';
+import { clearExistingElements, handleLLMResponse } from '../hooks/mapAnimations';
 
 // Add these constants at the top
 const POI_PARTICLE_COLOR = '#FF4500';
@@ -479,4 +480,114 @@ const addGeoIdLayer = (map, geoid, index, patterns) => {
             1
         );
     }, index * 8);
+};
+
+export const dragStart = (e, map) => {
+  // Get coordinates of clicked point
+  const coords = e.lngLat;
+
+  // Add dragging class
+  map.getCanvas().style.cursor = 'grabbing';
+
+  // Add a point feature under the mouse
+  map.addSource('point', {
+    'type': 'geojson',
+    'data': {
+      'type': 'FeatureCollection',
+      'features': [{
+        'type': 'Feature',
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [coords.lng, coords.lat]
+        }
+      }]
+    }
+  });
+};
+
+export const dragEnd = (map) => {
+  // Remove dragging cursor
+  map.getCanvas().style.cursor = '';
+
+  // Remove the point
+  if (map.getSource('point')) {
+    map.removeSource('point');
+  }
+};
+
+export const drag = (e, map) => {
+  // Update point feature coordinates
+  if (map.getSource('point')) {
+    map.getSource('point').setData({
+      'type': 'FeatureCollection',
+      'features': [{
+        'type': 'Feature',
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [e.lngLat.lng, e.lngLat.lat]
+        }
+      }]
+    });
+  }
+};
+
+export const handleQuestion = async (question, map) => {
+  try {
+    // Clear any existing elements
+    clearExistingElements(map);
+    
+    // Process the question and get response
+    const response = await fetch('/api/question', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ question })
+    });
+    
+    const data = await response.json();
+    
+    // Handle the response
+    handleLLMResponse(map, data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error handling question:', error);
+    return null;
+  }
+};
+
+export const initializeMapLayers = (map) => {
+  // Add ZIP Codes Flood Analysis layer
+  map.addLayer({
+    'id': 'zipcode-flood-analysis',
+    'type': 'fill',
+    'source': 'zipcodes',
+    'paint': {
+      'fill-color': [
+        'case',
+        ['has', 'flood_height'],
+        [
+          'interpolate',
+          ['linear'],
+          ['get', 'flood_height'],
+          0, '#f7fbff',    // Very light blue for lowest heights
+          2, '#9ecae1',    // Light blue
+          4, '#4292c6',    // Medium blue
+          6, '#2171b5',    // Deep blue
+          8, '#084594'     // Very dark blue for highest heights
+        ],
+        '#404040'  // Dark gray for ZIP codes without measurements
+      ],
+      'fill-opacity': [
+        'case',
+        ['has', 'flood_height'],
+        0.6,  // Changed from 0.7 to 0.5 for ZIP codes with flood data
+        0.1   // Keep 0.1 for ZIP codes without measurements
+      ]
+    },
+    'layout': {
+      'visibility': 'none'
+    }
+  });
 }; 

@@ -1,11 +1,192 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, LineChart, Line, Legend, PieChart, Pie } from 'recharts';
-import { MOCK_RESPONSES, parseClaudeResponse, LOADING_STEPS } from '../../services/claude';
-import { stopGEOIDAnimation, initializeParticleLayers, transitionToGridView } from './hooks/mapAnimations';
-import mapboxgl from 'mapbox-gl';
+import { handlePanelQuestion, handleQuickAction } from '../../services/claude';
+import { initializePanelAnimations, handlePanelCollapse } from './hooks/mapAnimations';
+import { 
+  AlertTriangle, 
+  Building, 
+  BarChart2, 
+  Clock, 
+  Map as MapIcon,
+  ArrowRight
+} from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 
-// Styled components from index.jsx
+// Mock data for a commercial intersection cluster
+const clusterData = {
+  name: "Westheimer & Post Oak",
+  type: "Retail & Office Hub",
+  price: "$8.4M",
+  priceUnit: "daily economic impact",
+  address: "Post Oak Blvd & Westheimer Rd",
+  city: "Houston, TX 77056",
+  properties: 42,
+  sqft: "1.2M",
+  avgFloodDepth: 2.8,
+  lastFlood: "Hurricane Harvey (2017)",
+  keyTenants: "Galleria Mall, Financial Services, Luxury Retail",
+  imageUrl: "https://images.unsplash.com/photo-1582225373839-3f67b3057106?q=80&w=2787&auto=format&fit=crop"
+};
+
+// LLM models for benchmarking
+const llmModels = [
+  { id: 'gpt4', name: 'GPT-4', color: '#3b82f6', confidence: 89 },
+  { id: 'claude3', name: 'Claude 3', color: '#8b5cf6', confidence: 92 },
+  { id: 'llama3', name: 'Llama 3', color: '#10b981', confidence: 85 },
+  { id: 'deepseek', name: 'DeepSeek-R1', color: '#f97316', confidence: 87 }
+];
+
+// Add milestone categories to organize risk factors
+const milestoneCategories = {
+  'Infrastructure': {
+    color: '#4B5563',
+    factors: ['Power Infrastructure', 'Building Age']
+  },
+  'Environmental': {
+    color: '#047857',
+    factors: ['Elevation', 'Bayou Proximity']
+  },
+  'Operational': {
+    color: '#1D4ED8',
+    factors: ['Business Continuity', 'Historical Flooding']
+  }
+};
+
+// Update risk factor data with categories
+const riskFactorData = [
+  { 
+    factor: 'Elevation',
+    category: 'Environmental',
+    'GPT-4': 25, 
+    'Claude 3': 20, 
+    'Llama 3': 38,
+    'DeepSeek-R1': 42,
+    description: 'Property sits 3.5ft below surrounding area',
+    impact: 'Critical factor for flood vulnerability'
+  },
+  { 
+    factor: 'Building Age',
+    category: 'Infrastructure', 
+    'GPT-4': 15, 
+    'Claude 3': 23, 
+    'Llama 3': 10,
+    'DeepSeek-R1': 12,
+    description: 'Most structures built between 1990-2005',
+    impact: 'Affects structural resilience during floods'
+  },
+  { 
+    factor: 'Power Infrastructure',
+    category: 'Infrastructure', 
+    'GPT-4': 25, 
+    'Claude 3': 30, 
+    'Llama 3': 12,
+    'DeepSeek-R1': 18,
+    description: 'Multiple substations with partial redundancy',
+    impact: 'Critical for maintaining operations'
+  },
+  { 
+    factor: 'Bayou Proximity',
+    category: 'Environmental', 
+    'GPT-4': 20, 
+    'Claude 3': 12, 
+    'Llama 3': 32,
+    'DeepSeek-R1': 25,
+    description: '0.6 miles to Buffalo Bayou',
+    impact: 'Direct exposure to flooding risk'
+  },
+  { 
+    factor: 'Business Continuity',
+    category: 'Operational', 
+    'GPT-4': 10, 
+    'Claude 3': 15, 
+    'Llama 3': 5,
+    'DeepSeek-R1': 3,
+    description: '64% of businesses have continuity plans',
+    impact: 'Affects recovery speed and resilience'
+  },
+  { 
+    factor: 'Historical Flooding',
+    category: 'Operational', 
+    'GPT-4': 5, 
+    'Claude 3': 5, 
+    'Llama 3': 3,
+    'DeepSeek-R1': 5,
+    description: '2 major flood events in past 10 years',
+    impact: 'Indicates recurring vulnerability'
+  }
+];
+
+// Recovery timeline data
+const recoveryTimelineData = [
+  { day: 0, 'GPT-4': 0, 'Claude 3': 0, 'Llama 3': 0, 'DeepSeek-R1': 0 },
+  { day: 2, 'GPT-4': 8, 'Claude 3': 15, 'Llama 3': 5, 'DeepSeek-R1': 3 },
+  { day: 4, 'GPT-4': 21, 'Claude 3': 32, 'Llama 3': 11, 'DeepSeek-R1': 9 },
+  { day: 6, 'GPT-4': 36, 'Claude 3': 48, 'Llama 3': 18, 'DeepSeek-R1': 16 },
+  { day: 8, 'GPT-4': 47, 'Claude 3': 62, 'Llama 3': 26, 'DeepSeek-R1': 35 },
+  { day: 10, 'GPT-4': 58, 'Claude 3': 73, 'Llama 3': 35, 'DeepSeek-R1': 52 },
+  { day: 12, 'GPT-4': 67, 'Claude 3': 81, 'Llama 3': 43, 'DeepSeek-R1': 63 },
+  { day: 14, 'GPT-4': 74, 'Claude 3': 89, 'Llama 3': 51, 'DeepSeek-R1': 70 },
+  { day: 16, 'GPT-4': 81, 'Claude 3': 94, 'Llama 3': 58, 'DeepSeek-R1': 76 },
+  { day: 18, 'GPT-4': 86, 'Claude 3': 98, 'Llama 3': 65, 'DeepSeek-R1': 82 },
+  { day: 20, 'GPT-4': 91, 'Claude 3': 100, 'Llama 3': 71, 'DeepSeek-R1': 87 },
+  { day: 24, 'GPT-4': 97, 'Claude 3': 100, 'Llama 3': 83, 'DeepSeek-R1': 95 },
+  { day: 28, 'GPT-4': 100, 'Claude 3': 100, 'Llama 3': 91, 'DeepSeek-R1': 98 },
+  { day: 32, 'GPT-4': 100, 'Claude 3': 100, 'Llama 3': 96, 'DeepSeek-R1': 100 },
+  { day: 36, 'GPT-4': 100, 'Claude 3': 100, 'Llama 3': 100, 'DeepSeek-R1': 100 }
+];
+
+// Model conclusions
+const modelConclusions = [
+  {
+    id: 'llama3',
+    name: 'Llama 3',
+    color: '#10b981',
+    recoveryTime: '36 days',
+    riskScore: 78,
+    keyInsight: 'Elevation is the dominant risk factor',
+    uniqueFinding: 'Historical flood patterns suggest longer recovery periods than other models predict'
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek-R1',
+    color: '#f97316',
+    recoveryTime: '32 days',
+    riskScore: 73,
+    keyInsight: 'Elevation combined with bayou proximity creates compound risk',
+    uniqueFinding: 'Retail businesses recover significantly slower than office spaces in this area'
+  },
+  {
+    id: 'gpt4',
+    name: 'GPT-4',
+    color: '#3b82f6',
+    recoveryTime: '24 days',
+    riskScore: 65,
+    keyInsight: 'Power infrastructure is the critical path dependency',
+    uniqueFinding: 'Building proximity to backup power grid significantly reduces recovery time'
+  },
+  {
+    id: 'claude3',
+    name: 'Claude 3',
+    color: '#8b5cf6',
+    recoveryTime: '20 days',
+    riskScore: 52,
+    keyInsight: 'Business continuity plans most important for rapid recovery',
+    uniqueFinding: 'Tenants with remote work capabilities recover 42% faster than those without'
+  }
+];
+
+// Styled components from the older version
 const Panel = styled.div`
   position: absolute;
   left: 0;
@@ -17,6 +198,8 @@ const Panel = styled.div`
   display: flex;
   flex-direction: column;
   z-index: 1;
+  transform: translateX(${props => props.$isCollapsed ? '-100%' : '0'});
+  transition: transform 0.3s ease;
 `;
 
 const ChatHeader = styled.div`
@@ -118,11 +301,11 @@ const FollowUpButton = styled(QuestionButton)`
 `;
 
 const SeeMoreButton = styled(QuestionButton)`
-  background: rgba(255, 69, 0, 0.15);  // Using #FF4500 (the orange) with transparency
-  border: 1px solid rgba(255, 69, 0, 0.3);
+  background: rgba(0, 136, 204, 0.15);  // Using #0088cc (the blue) with transparency
+  border: 1px solid rgba(0, 136, 204, 0.3);
   
   &:hover {
-    background: rgba(255, 69, 0, 0.25);
+    background: rgba(0, 136, 204, 0.25);
   }
 `;
 
@@ -144,583 +327,38 @@ const AnimatedDiv = styled.div`
   animation-delay: ${props => props.$delay}s;
 `;
 
-// Add these styled components
-const StatsContainer = styled.div`
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  padding: 20px;
-  margin: 20px 0;
-  animation: ${fadeIn} 0.8s ease-out forwards;
+const CollapseIconContainer = styled.div`
+  position: absolute;
+  left: ${props => props.$isCollapsed ? '10px' : '35%'};
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  transition: left 0.3s ease;
 `;
 
-const StatsTitle = styled.div`
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-`;
-
-const GraphTitle = styled.span`
-  font-weight: 600;
-  margin-top: 2px;
-`;
-
-// Add new styled component for the data source
-const DataSource = styled.div`
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  max-width: 200px;
-  text-align: right;
-`;
-
-// Updated data for energy consumption
-const areaComparisonData = [
-  {
-    year: '2020',
-    brickell: 720,
-    southBeach: 680,
-    miami: 650,
-    us: 600,
-    name: '2020'
-  },
-  {
-    year: '2021',
-    brickell: 785,
-    southBeach: 710,
-    miami: 680,
-    us: 620,
-    name: '2021'
-  },
-  {
-    year: '2022',
-    brickell: 850,
-    southBeach: 760,
-    miami: 720,
-    us: 650,
-    name: '2022'
-  },
-  {
-    year: '2023',
-    brickell: 920,
-    southBeach: 830,
-    miami: 780,
-    us: 690,
-    name: '2023'
-  },
-  {
-    year: '2024',
-    brickell: 980,
-    southBeach: 890,
-    miami: 840,
-    us: 730,
-    name: '2024'
-  },
-  {
-    year: '2025',
-    brickell: 1050,
-    southBeach: 960,
-    miami: 900,
-    us: 780,
-    name: '2025'
-  }
-];
-
-// Update the data to show infrastructure metrics
-const brickellData = [
-  { name: 'Smart Grid', value: 45 },
-  { name: 'Renewable', value: 28 },
-  { name: 'Traditional', value: 15 },
-  { name: 'Backup', value: 12 }
-];
-
-// Add these new styled components
-const GraphLoadingContainer = styled.div`
-  height: 200px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  margin: 20px 0;
+const CollapseIcon = styled.div`
+  width: 32px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
-`;
+  cursor: pointer;
+  color: white;
+  transition: background-color 0.2s;
 
-const LoadingText = styled.div`
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
-  z-index: 1;
-`;
-
-const LoadingShimmer = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.05),
-    transparent
-  );
-  animation: shimmer 1.5s infinite;
-
-  @keyframes shimmer {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(100%);
-    }
-  }
-`;
-
-// Add new data for area comparison
-const areaEnergyData = [
-  {
-    metric: 'Peak Demand (MW)',
-    Brickell: 850,
-    SouthBeach: 720,
-    Wynwood: 580
-  },
-  {
-    metric: 'Base Supply (MW)',
-    Brickell: 920,
-    SouthBeach: 780,
-    Wynwood: 650
-  },
-  {
-    metric: 'Grid Capacity',
-    Brickell: 1100,
-    SouthBeach: 900,
-    Wynwood: 750
-  },
-  {
-    metric: 'Renewable Share',
-    Brickell: 280,
-    SouthBeach: 220,
-    Wynwood: 190
-  }
-];
-
-// Create separate components for each graph type
-const ComparisonGraph = () => {
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  if (isLoading) {
-    return (
-      <StatsContainer>
-        <StatsTitle>
-          <span>Energy Consumption Activity (2020-2025)</span>
-          <DataSource>Based on FPL Grid Data & Energy Forecasts</DataSource>
-        </StatsTitle>
-        <GraphLoadingContainer>
-          <LoadingText>Loading visualization...</LoadingText>
-          <LoadingShimmer />
-        </GraphLoadingContainer>
-      </StatsContainer>
-    );
+  svg {
+    width: 24px;
+    height: 24px;
+    transform: rotate(${props => props.$isCollapsed ? '0deg' : '180deg'});
+    transition: transform 0.3s ease;
   }
 
-  return (
-    <>
-      <StatsContainer>
-        <StatsTitle>
-          <span>Energy Consumption Activity (2020-2025)</span>
-          <DataSource>Based on FPL Grid Data & Energy Forecasts</DataSource>
-        </StatsTitle>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart 
-            data={areaComparisonData}
-            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-          >
-            <XAxis 
-              dataKey="year" 
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-            />
-            <YAxis 
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-              domain={[0, 100]}
-              width={25}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                background: 'rgba(26, 26, 26, 0.95)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '4px',
-                color: 'white',
-                fontSize: '12px',
-                padding: '8px 12px'
-              }}
-              formatter={(value) => [`${value}`, 'Index']}
-              labelStyle={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' }}
-            />
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="rgba(255, 255, 255, 0.05)"
-              vertical={false}
-            />
-            <Legend 
-              verticalAlign="top"
-              height={36}
-              content={({ payload }) => (
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'center', 
-                  gap: '16px',
-                  marginBottom: '8px',
-                  fontSize: '11px'
-                }}>
-                  {payload.map((entry, index) => (
-                    <div 
-                      key={`legend-${index}`}
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '4px',
-                        color: 'rgba(255, 255, 255, 0.7)'
-                      }}
-                    >
-                      <span style={{ 
-                        display: 'inline-block',
-                        width: '12px',
-                        height: '2px',
-                        background: entry.color,
-                        ...(entry.value === 'US Average' && { 
-                          borderTop: '1px dashed ' + entry.color,
-                          background: 'transparent'
-                        })
-                      }} />
-                      <span>{entry.value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            />
-            <Line 
-              type="monotone"
-              dataKey="brickell" 
-              name="Brickell" 
-              stroke="#FF4500"
-              strokeWidth={2}
-              dot={{ fill: '#FF4500', stroke: '#FF4500', r: 3 }}
-              activeDot={{ r: 5, stroke: '#FF4500', strokeWidth: 2 }}
-            />
-            <Line 
-              type="monotone"
-              dataKey="southBeach" 
-              name="South Beach" 
-              stroke="#FF8C00"
-              strokeWidth={2}
-              dot={{ fill: '#FF8C00', stroke: '#FF8C00', r: 3 }}
-              activeDot={{ r: 5, stroke: '#FF8C00', strokeWidth: 2 }}
-            />
-            <Line 
-              type="monotone"
-              dataKey="miami" 
-              name="Miami Metro" 
-              stroke="rgba(255, 255, 255, 0.6)"
-              strokeWidth={1.5}
-              dot={{ fill: 'rgba(255, 255, 255, 0.6)', stroke: 'rgba(255, 255, 255, 0.6)', r: 2 }}
-              activeDot={{ r: 4, stroke: 'rgba(255, 255, 255, 0.6)', strokeWidth: 2 }}
-            />
-            <Line 
-              type="monotone"
-              dataKey="us" 
-              name="US Average" 
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeDasharray="4 4"
-              strokeWidth={1.5}
-              dot={{ fill: 'rgba(255, 255, 255, 0.3)', stroke: 'rgba(255, 255, 255, 0.3)', r: 2 }}
-              activeDot={{ r: 4, stroke: 'rgba(255, 255, 255, 0.3)', strokeWidth: 2 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-        <div style={{ 
-          fontSize: '11px', 
-          color: 'rgba(255, 255, 255, 0.5)', 
-          marginTop: '12px',
-          padding: '0 8px'
-        }}>
-          * Index combines business activity, property values, and tourism metrics
-        </div>
-      </StatsContainer>
-
-      <StatsContainer>
-        <StatsTitle>
-          <GraphTitle>District Energy Comparison</GraphTitle>
-          <DataSource>FPL Grid Analysis 2024</DataSource>
-        </StatsTitle>
-        <div style={{ 
-          fontSize: '14px', 
-          color: 'rgba(255, 255, 255, 0.7)', 
-          marginBottom: '16px',
-          lineHeight: '1.4'
-        }}>
-          Comparison of key energy metrics across Miami's major districts, showing current demand, supply capacity, and renewable integration levels.
-        </div>
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart 
-            data={areaEnergyData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-            layout="vertical"
-          >
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="rgba(255, 255, 255, 0.05)"
-              horizontal={false}
-            />
-            <XAxis 
-              type="number"
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-            />
-            <YAxis 
-              dataKey="metric"
-              type="category"
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-              width={100}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                background: 'rgba(26, 26, 26, 0.95)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '4px',
-                fontSize: '12px',
-                padding: '8px 12px'
-              }}
-              formatter={(value) => [`${value} MW`]}
-              labelStyle={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' }}
-            />
-            <Legend 
-              verticalAlign="top"
-              height={36}
-              wrapperStyle={{
-                fontSize: '11px',
-                color: 'rgba(255, 255, 255, 0.7)'
-              }}
-            />
-            <Bar 
-              dataKey="Brickell" 
-              fill="#FF4500" 
-              name="Brickell"
-              radius={[0, 4, 4, 0]}
-            />
-            <Bar 
-              dataKey="SouthBeach" 
-              fill="#FF8C00" 
-              name="South Beach"
-              radius={[0, 4, 4, 0]}
-            />
-            <Bar 
-              dataKey="Wynwood" 
-              fill="#FFA07A" 
-              name="Wynwood"
-              radius={[0, 4, 4, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-        <div style={{ 
-          fontSize: '11px', 
-          color: 'rgba(255, 255, 255, 0.5)', 
-          marginTop: '12px',
-          padding: '0 8px'
-        }}>
-          * Based on current grid infrastructure and usage patterns
-        </div>
-      </StatsContainer>
-    </>
-  );
-};
-
-// Update the power trend data to match the style
-const powerTrendData = [
-  { time: '00:00', load: 450, renewable: 120, predicted: 440 },
-  { time: '04:00', load: 380, renewable: 80, predicted: 390 },
-  { time: '08:00', load: 720, renewable: 280, predicted: 700 },
-  { time: '12:00', load: 850, renewable: 320, predicted: 830 },
-  { time: '16:00', load: 780, renewable: 290, predicted: 790 },
-  { time: '20:00', load: 680, renewable: 180, predicted: 670 },
-  { time: '23:59', load: 520, renewable: 150, predicted: 510 }
-];
-
-const BrickellGraph = () => {
-  return (
-    <>
-      <StatsContainer>
-        <StatsTitle>
-          <GraphTitle>Power Distribution Network</GraphTitle>
-          <DataSource>FPL Grid Data 2023</DataSource>
-        </StatsTitle>
-        <div style={{ 
-          fontSize: '14px', 
-          color: 'rgba(255, 255, 255, 0.7)', 
-          marginBottom: '16px',
-          lineHeight: '1.4'
-        }}>
-          This breakdown shows the distribution of power infrastructure nodes across Brickell's network. Smart grid components represent the majority, followed by renewable energy installations and traditional power delivery systems.
-        </div>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart 
-            data={brickellData}
-            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-          >
-            <XAxis 
-              dataKey="name" 
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-            />
-            <YAxis 
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-              width={25}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                background: 'rgba(26, 26, 26, 0.95)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '4px',
-                fontSize: '12px',
-                padding: '8px 12px'
-              }}
-              formatter={(value) => [`${value} nodes`]}
-              labelStyle={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' }}
-            />
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="rgba(255, 255, 255, 0.05)"
-              vertical={false}
-            />
-            <Bar 
-              dataKey="value" 
-              fill="#FF4500"
-              radius={[4, 4, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-        <div style={{ 
-          fontSize: '11px', 
-          color: 'rgba(255, 255, 255, 0.5)', 
-          marginTop: '12px',
-          padding: '0 8px'
-        }}>
-          * Based on latest infrastructure survey and smart meter data
-        </div>
-      </StatsContainer>
-
-      <StatsContainer>
-        <StatsTitle>
-          <GraphTitle>24hr Power Consumption (MW)</GraphTitle>
-          <DataSource>Live Grid Metrics + AI Forecast</DataSource>
-        </StatsTitle>
-        <div style={{ 
-          fontSize: '14px', 
-          color: 'rgba(255, 255, 255, 0.7)', 
-          marginBottom: '16px',
-          lineHeight: '1.4'
-        }}>
-          This graph shows real-time power consumption patterns across Brickell's grid network. The orange line represents total load, while green shows renewable energy contribution. The blue dashed line indicates AI-predicted demand for optimal resource allocation.
-        </div>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart 
-            data={powerTrendData}
-            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-          >
-            <XAxis 
-              dataKey="time" 
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-            />
-            <YAxis 
-              tick={{ fill: 'rgba(255, 255, 255, 0.7)', fontSize: 11 }}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-              width={25}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                background: 'rgba(26, 26, 26, 0.95)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '4px',
-                fontSize: '12px',
-                padding: '8px 12px'
-              }}
-              formatter={(value, name) => [
-                `${value} MW`, 
-                name === 'load' ? 'Total Load' : 
-                name === 'renewable' ? 'Renewable' : 
-                'AI Predicted'
-              ]}
-              labelStyle={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' }}
-            />
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="rgba(255, 255, 255, 0.05)"
-              vertical={false}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="load" 
-              name="Total Load"
-              stroke="#FF4500" 
-              strokeWidth={1.5}
-              dot={{ fill: '#FF4500', r: 2 }}
-              activeDot={{ r: 4, stroke: '#FF4500', strokeWidth: 2 }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="renewable" 
-              name="Renewable"
-              stroke="#4CAF50" 
-              strokeWidth={1.5}
-              dot={{ fill: '#4CAF50', r: 2 }}
-              activeDot={{ r: 4, stroke: '#4CAF50', strokeWidth: 2 }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="predicted" 
-              name="AI Predicted"
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeDasharray="4 4"
-              strokeWidth={1.5}
-              dot={{ fill: 'rgba(255, 255, 255, 0.3)', r: 2 }}
-              activeDot={{ r: 4, stroke: 'rgba(255, 255, 255, 0.3)', strokeWidth: 2 }}
-            />
-            <Legend 
-              verticalAlign="top" 
-              height={36}
-              wrapperStyle={{
-                fontSize: '11px',
-                color: 'rgba(255, 255, 255, 0.7)'
-              }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-        <div style={{ 
-          fontSize: '11px', 
-          color: 'rgba(255, 255, 255, 0.5)', 
-          marginTop: '12px',
-          padding: '0 8px'
-        }}>
-          * Data updates every 5 minutes with real-time grid measurements
-        </div>
-      </StatsContainer>
-    </>
-  );
-};
+  &:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+`;
 
 const LoadingMessage = styled.div`
   display: flex;
@@ -755,1132 +393,682 @@ const LoadingStep = styled.div`
   }
 `;
 
-const loadingDots = keyframes`
-  0%, 20% { content: ''; }
-  40% { content: '.'; }
-  60% { content: '..'; }
-  80%, 100% { content: '...'; }
+// New styled components for visualizations
+const VisualizationCard = styled.div`
+  background: #2A2A2A;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const QuickActionsContainer = styled.div`
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-`;
-
-const QuickActionButton = styled.button`
-  flex: 1;
-  background: rgba(255, 69, 0, 0.1);
-  border: 1px solid rgba(255, 69, 0, 0.2);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 0; // Allows flex shrinking
-
-  &:hover {
-    background: rgba(255, 69, 0, 0.15);
-    border-color: rgba(255, 69, 0, 0.3);
-  }
-
-  .icon {
-    color: rgb(255, 69, 0);
-    font-size: 16px;
-    margin-bottom: 4px;
-  }
-
-  .text {
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .description {
-    display: none; // Hide description for compact view
-  }
-`;
-
-// Add new styled components at the top
-const ModelSelector = styled.div`
-  position: relative;
-  display: inline-block;
-`;
-
-const ModelToggle = styled.button`
-  background: rgba(255, 69, 0, 0.1);
-  border: 1px solid rgba(255, 69, 0, 0.2);
-  border-radius: 4px;
-  color: #FF4500;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+const CardHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 4px;
-  transition: all 0.2s;
-
-  &:hover {
-    background: rgba(255, 69, 0, 0.15);
-  }
-
-  &:after {
-    content: '▼';
-    font-size: 8px;
-    margin-left: 4px;
+  margin-bottom: 16px;
+  gap: 8px;
+  
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: white;
   }
 `;
 
-const ModelDropdown = styled.div`
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  background: rgba(0, 0, 0, 0.95);
-  border: 1px solid rgba(255, 69, 0, 0.2);
-  border-radius: 4px;
-  overflow: hidden;
-  z-index: 1000;
-  display: ${props => props.$isOpen ? 'block' : 'none'};
+const ModelCard = styled.div`
+  background: #1A1A1A;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  border-left: 3px solid ${props => props.$color};
 `;
 
-const ModelOption = styled.div`
-  padding: 8px 16px;
-  color: white;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
+const ModelHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+`;
 
-  &:hover {
-    background: rgba(255, 69, 0, 0.15);
+const ModelName = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: ${props => props.$color};
   }
+  
+  .name {
+    font-weight: 600;
+    color: white;
+  }
+`;
 
-  ${props => props.$isSelected && `
-    background: rgba(255, 69, 0, 0.1);
-    color: #FF4500;
-  `}
+const ModelStats = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
+  .risk-score {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    background: ${props => props.$color}20;
+    color: ${props => props.$color};
+  }
+  
+  .recovery-time {
+    color: white;
+    font-weight: 500;
+  }
+`;
+
+const ChartContainer = styled.div`
+  height: 200px;
+  width: 100%;
+  margin: 16px 0;
+`;
+
+const ChartLegend = styled.div`
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    
+    .label {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+  }
+`;
+
+const InsightText = styled.p`
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  margin: 8px 0 0 0;
 `;
 
 const AIChatPanel = ({ messages, setMessages, handleQuestion, map }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const messagesEndRef = useRef(null);
-  const [isGeoIDVisible, setIsGeoIDVisible] = useState(false);
-  const [showPopup, setShowPopup] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('Claude');
-  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
-
-  // Define available models with their versions
-  const availableModels = [
-    'Claude-3 Opus',
-    'Claude-3 Sonnet',
-    'Claude-2.1',
-    'GPT-4 Turbo',
-    'GPT-4',
-    'GPT-3.5 Turbo',
-    'Gemini Pro',
-    'Gemini Ultra',
-    'DeepSeek Chat',
-    'DeepSeek Coder',
-    'Llama-2 70B',
-    'Mixtral 8x7B',
-    'Code Llama 34B',
-    'Yi-34B Chat'
-  ];
-
-  const handleInitialQuestion = async (question) => {
-    // Set loading state first
-    setIsLoading(true);
-
-
-    // Add a longer delay (2.5 seconds) to show the loading animation
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Process the question - let handleQuestion manage the message adding
-    const response = await handleQuestion(question);
-
-    // Turn off loading state
-    setIsLoading(false);
-  };
-
-  const processQuestionResponse = async (question) => {
-    console.log('🎯 processQuestionResponse called with:', question);
-    
-    // Add special handling for the high-energy zones question
-    if (question === "Find high-energy, high-connectivity zones in Miami") {
-      // Show loading steps
-      setMessages(prevMessages => [...prevMessages, {
-        isUser: true,
-        content: question
-      }]);
-      
-      setIsLoading(true);
-      
-      // Brief loading animation
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Add loading message
-      const loadingSteps = [
-        {
-          icon: "🗺️",
-          text: "Analyzing energy consumption patterns...",
-          delay: 300
-        },
-        {
-          icon: "📡",
-          text: "Scanning connectivity infrastructure...",
-          delay: 600
-        },
-        {
-          icon: "📊",
-          text: "Processing urban density metrics...",
-          delay: 900
-        }
-      ];
-
-      for (const step of loadingSteps) {
-        await new Promise(resolve => setTimeout(resolve, step.delay));
-      }
-
-      setIsLoading(false);
-
-      // Continue with original response handling
-      const response = await handleQuestion(question);
-      return response;
-    }
-
-    try {
-        // First, stop any existing animations
-        if (map.current) {
-            console.log('🛑 Stopping existing animations');
-            stopGEOIDAnimation(map.current);
-        }
-
-        // Get response from Claude
-        const response = await handleQuestion(question);
-        console.log('📍 Claude response:', response);
-
-        // Handle grid view transitions first
-        if (question.includes('SHOW_BRICKELL_DINING') || 
-            question.includes('SHOW_BRICKELL_GRID') || 
-            question.includes('EXPLORE_GRID') ||
-            response?.poiInfo?.poiTypes?.includes('substation') || 
-            response?.poiInfo?.poiTypes?.includes('transformer')) {
-            
-            console.log('🔌 Power infrastructure query detected');
-            if (map.current) {
-                console.log('🔄 Transitioning to grid view');
-                await transitionToGridView(map.current);
-            }
-        }
-
-        // Then handle navigation if coordinates are present
-        if (response?.action === 'navigate' && response.coordinates && response.zoomLevel && map.current) {
-            console.log('🎯 Navigating to coordinates:', response.coordinates);
-            map.current.flyTo({
-                center: response.coordinates,
-                zoom: response.zoomLevel,
-                duration: 2000
-            });
-        }
-
-        return response;
-    } catch (error) {
-        console.error('❌ Error in processQuestionResponse:', error);
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (inputValue.trim()) {
-      processQuestionResponse(inputValue);
-      setInputValue('');
-    }
-  };
 
   // Auto-scroll effect
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Update handleQuickAction to use handleQuestion instead
-  const handleQuickAction = async (action) => {
-    if (action.prompt === 'VIEW_TRANSFORMER_CAPACITY') {
-      // Get the mock response directly from MOCK_RESPONSES
-      const mockResponse = MOCK_RESPONSES[action.prompt];
+  // Handle panel collapse
+  useEffect(() => {
+    handlePanelCollapse(isCollapsed, map);
+  }, [isCollapsed, map]);
 
-      // Parse the mock response
-      const parsedResponse = parseClaudeResponse(mockResponse);
+  // Initial collapse effect
+  useEffect(() => {
+    handlePanelCollapse(true, map);
+  }, [map]);
 
-      // Add the parsed response to the messages
-      setMessages(prevMessages => [...prevMessages, {
-        isUser: false,
-        content: parsedResponse
-      }]);
-
-      return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (inputValue.trim()) {
+      await handlePanelQuestion(inputValue.trim(), map, setMessages, setIsLoading);
+      setInputValue('');
     }
-
-    if (action.prompt === 'SHOW_SUBSTATION_NETWORK') {
-      // Show the popup with "Hello" text
-      setShowPopup(true);
-      return;
-    }
-
-    if (action.prompt === 'SHOW_FUTURE_TRENDS') {
-        setIsLoading(true);
-        
-        // Add artificial delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        const mockResponse = {
-            isUser: false,
-            content: {
-                text: "Here's our AI forecast for Brickell's energy infrastructure needs:",
-                action: 'showGraphs',
-                graphs: [
-                    {
-                        data: [
-                            { year: '2024-Q1', capacity: 850, smart: 880, baseline: 820 },
-                            { year: '2024-Q2', capacity: 900, smart: 950, baseline: 850 },
-                            { year: '2024-Q3', capacity: 950, smart: 1020, baseline: 880 },
-                            { year: '2024-Q4', capacity: 1000, smart: 1100, baseline: 910 }
-                        ]
-                    },
-                    {
-                        data: [
-                            { year: '2024-Q1', capacity: 45, smart: 52, baseline: 40 },
-                            { year: '2024-Q2', capacity: 48, smart: 56, baseline: 42 },
-                            { year: '2024-Q3', capacity: 52, smart: 62, baseline: 44 },
-                            { year: '2024-Q4', capacity: 55, smart: 65, baseline: 46 }
-                        ]
-                    }
-                ],
-                postText: "The blue lines show projected energy demand under different growth scenarios."
-            }
-        };
-        
-        setMessages(prevMessages => [...prevMessages, mockResponse]);
-        setIsLoading(false);
-        return;
-    }
-    
-    // Special handling for graph-only actions
-    if (action.prompt === 'SHOW_GRID_GROWTH' || action.prompt === 'COMPARE_GRID_METRICS') {
-        const response = await handleQuestion(action.prompt);
-        const content = JSON.parse(response.content[0].text);
-        
-        // Directly add just the graphs to messages
-        setMessages(prevMessages => [...prevMessages, {
-            isUser: false,
-            content: {
-                action: 'showGraphs',
-                graphs: content.graphs
-            }
-        }]);
-        return;
-    }
-    
-    if (action.prompt === 'SHOW_GRID_DENSITY') {
-      const response = await handleQuestion(action.prompt);
-      const parsedResponse = parseClaudeResponse(response);
-      
-      // Add zoom out button to the response
-      const enhancedResponse = {
-        ...parsedResponse,
-        zoomOutButton: {
-          text: "View grid performance",
-          action: "zoomOut"
-        }
-      };
-
-      setMessages(prevMessages => [...prevMessages, {
-        isUser: false,
-        content: enhancedResponse
-      }]);
-      return;
-    }
-    
-    // Handle other actions as before
-    const response = await handleQuestion(action.prompt);
-    const parsedResponse = parseClaudeResponse(response);
-    setMessages(prevMessages => [...prevMessages, {
-      isUser: false,
-      content: parsedResponse
-    }]);
   };
 
   return (
-    <Panel>
-      <ChatHeader>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div>
-            <span style={{ color: '#666', fontSize: '14px', fontWeight: 500 }}>Chat with</span>
-            <span style={{ color: '#FF4500', fontSize: '14px', fontWeight: 600, marginLeft: '4px' }}>ATLAS</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ModelSelector>
-              <ModelToggle onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}>
-                {selectedModel}
-              </ModelToggle>
-              <ModelDropdown $isOpen={isModelDropdownOpen}>
-                {availableModels.map(model => (
-                  <ModelOption
-                    key={model}
-                    $isSelected={selectedModel === model}
-                    onClick={() => {
-                      setSelectedModel(model);
-                      setIsModelDropdownOpen(false);
-                    }}
-                  >
-                    {model}
-                  </ModelOption>
-                ))}
-              </ModelDropdown>
-            </ModelSelector>
+    <>
+      <Panel $isCollapsed={isCollapsed}>
+        <ChatHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div>
+              <span style={{ color: '#666', fontSize: '14px', fontWeight: 500 }}>Chat with</span>
+              <span style={{ color: '#0088cc', fontSize: '14px', fontWeight: 600, marginLeft: '4px' }}>ATLAS</span>
+            </div>
             <span style={{ 
               color: '#ffffff', 
               fontSize: '12px', 
               fontWeight: 600,
-              backgroundColor: '#FF4500',
+              backgroundColor: '#0088cc',
               padding: '2px 6px',
               borderRadius: '4px'
             }}>v0.1</span>
           </div>
-        </div>
-      </ChatHeader>
-      
-      <ChatMessages>
-        {messages.length === 0 ? (
-          <>
-            <InitialPrompt>
-              <div style={{ fontSize: '24px', marginBottom: '12px' }}>
-                Ask me about Miami's <span style={{  fontWeight: 800 }}>power grid</span>, <span style={{ fontWeight: 800 }}>infrastructure</span>, and <span style={{  fontWeight: 800 }}>urban development</span> patterns.
-              </div>
-              <div style={{ color: 'rgba(255, 255, 255, 0.6)', fontWeight: 300 }}>
-                I can help you analyze energy consumption, digital connectivity, and smart city initiatives.
-              </div>
-            </InitialPrompt>
-            
-            <AnimatedDiv $delay={0.2}>
-              <QuestionButton onClick={() => handleInitialQuestion("Find high-energy, high-connectivity zones in Miami")}>
-                Find high-energy, high-connectivity zones in Miami
-              </QuestionButton>
-            </AnimatedDiv>
+        </ChatHeader>
 
-            <AnimatedDiv $delay={0.4}>
-              <QuestionButton onClick={() => handleQuestion("Which areas show the highest population growth?")}>
-                Which areas show the highest population growth?
-              </QuestionButton>
-            </AnimatedDiv>
+        <ChatMessages>
+          {messages.length === 0 ? (
+            <>
+              <InitialPrompt>
+                <div style={{ fontSize: '24px', marginBottom: '12px' }}>
+                  Ask me about Houston's <span style={{ fontWeight: 800 }}>flood patterns</span>, <span style={{ fontWeight: 800 }}>water infrastructure</span>, and <span style={{ fontWeight: 800 }}>historical flood data</span>.
+                </div>
+                <div style={{ color: 'rgba(255, 255, 255, 0.6)', fontWeight: 300 }}>
+                  I can help you analyze flood risks, drainage systems, watershed patterns, and historical flooding impacts across Houston.
+                </div>
+              </InitialPrompt>
 
-            <AnimatedDiv $delay={0.6}>
-              <QuestionButton onClick={() => handleQuestion("Find neighborhoods with the best residential-commercial mix")}>
-                Find neighborhoods with the best residential-commercial mix
-              </QuestionButton>
-            </AnimatedDiv>
+              <AnimatedDiv $delay={0.2}>
+                <QuestionButton onClick={() => handlePanelQuestion("Show me the areas most impacted by Hurricane Harvey", map, setMessages, setIsLoading)}>
+                  Show me areas most impacted by Hurricane Harvey
+                </QuestionButton>
+              </AnimatedDiv>
 
-            <AnimatedDiv $delay={0.8}>
-              <SeeMoreButton onClick={() => handleQuestion("Show me more options")}>
-                See more
-              </SeeMoreButton>
-            </AnimatedDiv>
-          </>
-        ) : (
-          <>
-            {messages.map((msg, i) => {
-              console.log('Rendering message:', msg); // Debug log
-              console.log('Is latest message:', msg === messages[messages.length - 1]); // Debug log
-              
-              return (
+              <AnimatedDiv $delay={0.4}>
+                <QuestionButton onClick={() => handlePanelQuestion("Where are the major flood-prone areas?", map, setMessages, setIsLoading)}>
+                  Where are the major flood-prone areas?
+                </QuestionButton>
+              </AnimatedDiv>
+
+              <AnimatedDiv $delay={0.6}>
+                <QuestionButton onClick={() => handlePanelQuestion("Analyze flood risks by ZIP code", map, setMessages, setIsLoading)}>
+                  Analyze flood risks by ZIP code
+                </QuestionButton>
+              </AnimatedDiv>
+
+              <AnimatedDiv $delay={0.8}>
+                <SeeMoreButton onClick={() => handlePanelQuestion("Show me more flood analysis options", map, setMessages, setIsLoading)}>
+                  See more
+                </SeeMoreButton>
+              </AnimatedDiv>
+            </>
+          ) : (
+            <>
+              {messages.map((msg, i) => (
                 <Message key={i}>
                   <MessageHeader>
                     <Avatar />
                     <Sender>{msg.isUser ? 'You' : 'ATLAS'}</Sender>
                   </MessageHeader>
                   <MessageContent>
-                    {msg.isUser ? (
-                      msg.content
-                    ) : (
+                    {msg.isUser ? msg.content : (
                       <>
-                        {/* Add debug logs */}
-                        {console.log('Message content:', msg.content)}
-                        {console.log('Quick actions:', msg.content?.quickActions)}
-                        
-                        {/* Show quick actions if they exist */}
-                        {msg.content?.quickActions && (
-                          <QuickActionsContainer>
-                            {msg.content.quickActions.map((action, index) => {
-                              // Replace emoji icons with monochrome symbols
-                              const icon = {
-                                "📊": "◉", // Demographics
-                                "📈": "↗", // Historical Trends
-                                "🔮": "⊕"  // AI Predictions
-                              }[action.icon] || action.icon;
+                        {msg.content.action === "showCommercialCluster" && (
+                          <div className="bg-gray-900 rounded-xl overflow-hidden shadow-xl border border-gray-800 w-full max-w-3xl">
+                            {/* Commercial Info Header */}
+                            <div className="p-4 border-b border-gray-800">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Building className="w-5 h-5 text-gray-400" />
+                                  <h2 className="text-xl font-bold text-white">{msg.content.clusterData.name}</h2>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                                  <span className="text-red-500 font-medium text-sm">High Risk Zone</span>
+                                </div>
+                              </div>
+                              <div className="text-sm text-gray-400">
+                                {msg.content.clusterData.type} | {msg.content.clusterData.properties} properties | {msg.content.clusterData.sqft} sq ft
+                              </div>
+                            </div>
 
-                              return (
-                                <QuickActionButton
-                                  key={index}
-                                  onClick={() => handleQuickAction(action)}
-                                >
-                                  <div className="icon">{icon}</div>
-                                  <div className="text">{action.text}</div>
-                                  {action.description && (
-                                    <div className="description">{action.description}</div>
-                                  )}
-                                </QuickActionButton>
-                              );
-                            })}
-                          </QuickActionsContainer>
-                        )}
-
-                        {/* Show pre-graph text */}
-                        {msg.content?.preGraphText && (
-                          <div style={{ marginBottom: '20px' }}>
-                            {msg.content.preGraphText}
+                            {/* Recovery Timeline */}
+                            <div className="p-4 border-b border-gray-800">
+                              <h3 className="font-bold text-white mb-3 flex items-center">
+                                <Clock className="w-5 h-5 mr-2" />
+                                AI Recovery Timeline
+                              </h3>
+                              
+                              <div className="bg-gray-800 rounded-lg p-3 mb-4 text-gray-300 text-sm">
+                                <p>Modeling a <span className="text-white font-bold">Category 4</span> hurricane scenario with sustained winds of <span className="text-white font-bold">130 mph</span> and rainfall of <span className="text-white font-bold">40+ inches</span> over <span className="text-white font-bold">4 days</span>. Initial impact shows <span className="text-white font-bold">65%</span> of the area experiencing power outages and flood depths averaging <span className="text-white font-bold">2.8 feet</span> above ground level, comparable to Hurricane Harvey conditions.</p>
+                              </div>
+                              
+                              <div className="h-64 w-full mb-4">
+                                <div className="text-gray-300 text-sm font-semibold mb-4 text-center">Recovery Projection scenario 102</div>
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart 
+                                    data={[
+                                      { time: 0, Infrastructure: 100, Environmental: 100, Operational: 100 },
+                                      { time: 6, Infrastructure: 35, Environmental: 45, Operational: 60 },
+                                      { time: 12, Infrastructure: 30, Environmental: 40, Operational: 55 },
+                                      { time: 24, Infrastructure: 40, Environmental: 45, Operational: 65 },
+                                      { time: 48, Infrastructure: 55, Environmental: 50, Operational: 75 },
+                                      { time: 72, Infrastructure: 70, Environmental: 60, Operational: 85 },
+                                      { time: 96, Infrastructure: 80, Environmental: 65, Operational: 90 },
+                                      { time: 120, Infrastructure: 85, Environmental: 70, Operational: 95 },
+                                      { time: 168, Infrastructure: 90, Environmental: 80, Operational: 98 },
+                                      { time: 240, Infrastructure: 95, Environmental: 90, Operational: 100 }
+                                    ]}
+                                    margin={{ top: 10, right: 15, left: 5, bottom: 20 }}
+                                  >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <XAxis 
+                                      dataKey="time" 
+                                      stroke="#9ca3af"
+                                      tickFormatter={(value) => `${value}h`}
+                                      tick={{ fontSize: 10 }}
+                                      label={{ 
+                                        value: 'Hours Since Impact', 
+                                        position: 'insideBottom',
+                                        fill: '#9ca3af',
+                                        fontSize: 11,
+                                        dy: 10,
+                                        offset: -5
+                                      }}
+                                    />
+                                    <YAxis 
+                                      stroke="#9ca3af"
+                                      tick={{ fontSize: 10 }}
+                                      tickCount={5}
+                                      tickFormatter={(value) => `${value}%`}
+                                      axisLine={false}
+                                      tickLine={false}
+                                      label={{ 
+                                        value: 'System Functionality', 
+                                        angle: -90, 
+                                        position: 'center',
+                                        fill: '#9ca3af',
+                                        fontSize: 11,
+                                        dx: -25
+                                      }}
+                                    />
+                                    <Tooltip 
+                                      contentStyle={{ 
+                                        backgroundColor: '#1f2937', 
+                                        border: '1px solid #374151', 
+                                        color: '#e5e7eb',
+                                        fontSize: 11,
+                                        padding: '8px'
+                                      }}
+                                      formatter={(value, name) => [`${value}%`, name]}
+                                      labelFormatter={(value) => `Hour ${value}`}
+                                    />
+                                    <Legend 
+                                      verticalAlign="bottom" 
+                                      height={36}
+                                      wrapperStyle={{
+                                        fontSize: '11px',
+                                        paddingTop: '15px',
+                                        marginBottom: '-25px'
+                                      }}
+                                    />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="Infrastructure"
+                                      stroke={milestoneCategories.Infrastructure.color}
+                                      fill={milestoneCategories.Infrastructure.color}
+                                      fillOpacity={0.2}
+                                      name="Infrastructure"
+                                      strokeWidth={2}
+                                    />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="Environmental"
+                                      stroke={milestoneCategories.Environmental.color}
+                                      fill={milestoneCategories.Environmental.color}
+                                      fillOpacity={0.2}
+                                      name="Environmental"
+                                      strokeWidth={2}
+                                    />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="Operational"
+                                      stroke={milestoneCategories.Operational.color}
+                                      fill={milestoneCategories.Operational.color}
+                                      fillOpacity={0.2}
+                                      name="Operational"
+                                      strokeWidth={2}
+                                    />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                            
+                            {/* Model Conclusions */}
+                            <div className="p-4 pt-8 pb-8 border-b border-gray-800">
+                              <h3 className="font-bold text-white mb-3">LLM Recovery Predictions</h3>
+                              <div className="space-y-3">
+                                {msg.content.modelConclusions.map(model => (
+                                  <div 
+                                    key={model.id} 
+                                    className="bg-gray-800 rounded-lg p-3 border border-gray-700"
+                                    style={{ borderLeftColor: model.color, borderLeftWidth: '3px' }}
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center">
+                                        <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: model.color }}></div>
+                                        <span className="text-white font-bold">{model.name}</span>
+                                      </div>
+                                      <div className="flex items-center">
+                                        <span className="text-gray-400 text-sm mr-2">Risk Score:</span>
+                                        <span 
+                                          className="text-sm font-bold rounded-lg px-2 py-0.5" 
+                                          style={{ backgroundColor: `${model.color}30`, color: model.color }}
+                                        >
+                                          {model.riskScore}
+                                        </span>
+                                        <span className="text-white font-medium ml-3">{model.recoveryTime}</span>
+                                      </div>
+                                    </div>
+                                    <p className="text-sm text-gray-300 italic">"{model.uniqueFinding}"</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            {/* Risk Factors Chart */}
+                            <div className="p-4 border-b border-gray-800">
+                              <h3 className="font-bold text-white mb-3 flex items-center">
+                                <BarChart2 className="w-5 h-5 mr-2" />
+                                Risk Factor Analysis
+                              </h3>
+                              
+                              <div className="h-80 w-full mb-2">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart
+                                    data={msg.content.riskFactorData}
+                                    layout="vertical"
+                                    barGap={2}
+                                    barSize={8}
+                                  >
+                                    <defs>
+                                      {msg.content.llmModels.map(model => (
+                                        <linearGradient key={model.id} id={`gradient-${model.id}`} x1="0" y1="0" x2="1" y2="0">
+                                          <stop offset="0%" stopColor={`${model.color}40`} />
+                                          <stop offset="100%" stopColor={model.color} />
+                                        </linearGradient>
+                                      ))}
+                                    </defs>
+                                    <CartesianGrid 
+                                      strokeDasharray="3 3" 
+                                      stroke="#374151" 
+                                      horizontal={true}
+                                    />
+                                    <XAxis 
+                                      type="number" 
+                                      domain={[0, 100]} 
+                                      stroke="#9ca3af"
+                                      tickLine={false}
+                                      axisLine={false}
+                                      tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                      label={{ 
+                                        value: 'Risk Impact Score (%)', 
+                                        position: 'bottom',
+                                        fill: '#e5e7eb',
+                                        fontSize: 13,
+                                        dy: 15
+                                      }}
+                                    />
+                                    <YAxis 
+                                      dataKey="factor" 
+                                      type="category" 
+                                      stroke="#9ca3af"
+                                      tickLine={false}
+                                      axisLine={false}
+                                      tick={(props) => {
+                                        const factor = msg.content.riskFactorData.find(d => d.factor === props.payload.value);
+                                        const category = factor?.category;
+                                        const categoryColor = milestoneCategories[category]?.color;
+                                        return (
+                                          <g transform={`translate(${props.x},${props.y})`}>
+                                            <rect
+                                              x={-135}
+                                              y={-10}
+                                              width={130}
+                                              height={20}
+                                              fill={`${categoryColor}15`}
+                                              rx={4}
+                                            />
+                                            <text
+                                              x={-15}
+                                              y={0}
+                                              dy={4}
+                                              textAnchor="end"
+                                              fill="#e5e7eb"
+                                              fontSize={13}
+                                              fontWeight={500}
+                                            >
+                                              {props.payload.value}
+                                            </text>
+                                            <text
+                                              x={-125}
+                                              y={0}
+                                              dy={4}
+                                              textAnchor="start"
+                                              fill={categoryColor}
+                                              fontSize={12}
+                                              fontWeight={600}
+                                            >
+                                              {category}
+                                            </text>
+                                          </g>
+                                        );
+                                      }}
+                                      width={140}
+                                    />
+                                    <Legend
+                                      verticalAlign="top"
+                                      align="right"
+                                      iconType="circle"
+                                      wrapperStyle={{
+                                        paddingBottom: '10px'
+                                      }}
+                                    />
+                                    <Tooltip 
+                                      cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                                      contentStyle={{ 
+                                        backgroundColor: '#1f2937', 
+                                        border: '1px solid #374151', 
+                                        borderRadius: '6px',
+                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                                        padding: '12px 16px',
+                                        minWidth: '280px'
+                                      }}
+                                      itemStyle={{ color: '#e5e7eb', fontSize: '12px' }}
+                                      labelStyle={{ color: '#e5e7eb', fontWeight: 600, marginBottom: '8px' }}
+                                      formatter={(value, name, props) => {
+                                        const data = props.payload;
+                                        const model = msg.content.llmModels.find(m => m.name === name);
+                                        return [
+                                          <>
+                                            <div style={{ 
+                                              display: 'flex', 
+                                              alignItems: 'center', 
+                                              gap: '8px',
+                                              padding: '4px 8px',
+                                              background: `${model.color}15`,
+                                              borderRadius: '4px',
+                                              marginBottom: '4px'
+                                            }}>
+                                              <div style={{
+                                                width: '3px',
+                                                height: '16px',
+                                                background: model.color,
+                                                borderRadius: '2px'
+                                              }} />
+                                              <span style={{ 
+                                                color: model.color,
+                                                fontWeight: 600
+                                              }}>
+                                                {value}% Impact
+                                              </span>
+                                            </div>
+                                          </>,
+                                          name
+                                        ];
+                                      }}
+                                      labelFormatter={(label) => {
+                                        const factor = msg.content.riskFactorData.find(d => d.factor === label);
+                                        const category = factor?.category;
+                                        const categoryColor = milestoneCategories[category]?.color;
+                                        return (
+                                          <div>
+                                            <div style={{ 
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px',
+                                              marginBottom: '8px'
+                                            }}>
+                                              <div style={{
+                                                width: '4px',
+                                                height: '20px',
+                                                background: categoryColor,
+                                                borderRadius: '2px'
+                                              }} />
+                                              <div>
+                                                <div style={{ 
+                                                  fontSize: '14px',
+                                                  fontWeight: 600,
+                                                  color: categoryColor
+                                                }}>
+                                                  {category}
+                                                </div>
+                                                <div style={{ 
+                                                  fontSize: '13px',
+                                                  color: '#e5e7eb'
+                                                }}>
+                                                  {label}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div style={{
+                                              padding: '8px',
+                                              background: '#374151',
+                                              borderRadius: '4px',
+                                              marginTop: '8px'
+                                            }}>
+                                              <div style={{ 
+                                                fontSize: '12px',
+                                                color: '#9ca3af',
+                                                marginBottom: '4px'
+                                              }}>
+                                                {factor?.description}
+                                              </div>
+                                              <div style={{ 
+                                                fontSize: '12px',
+                                                color: '#d1d5db',
+                                                fontStyle: 'italic'
+                                              }}>
+                                                {factor?.impact}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      }}
+                                    />
+                                    {msg.content.llmModels.map(model => (
+                                      <Bar
+                                        key={model.id}
+                                        dataKey={model.name}
+                                        fill={`url(#gradient-${model.id})`}
+                                        radius={[0, 4, 4, 0]}
+                                        name={model.name}
+                                      />
+                                    ))}
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                            
+                            {/* More Details Bar */}
+                            <div className="p-4 bg-gray-800 flex justify-between items-center">
+                              <div className="text-gray-300">
+                                <span className="text-white font-bold">Prediction Range:</span> 20-36 day recovery
+                              </div>
+                              <button className="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center hover:bg-blue-700 transition-colors">
+                                <span>Full Analysis</span>
+                                <ArrowRight className="w-4 h-4 ml-1" />
+                              </button>
+                            </div>
                           </div>
                         )}
                         
-                        {/* Show graphs based on action type */}
-                        {msg.content?.action === 'showMultipleLocations' && (
-                          <>
-                            <ComparisonGraph />
-                            {msg.content?.postGraphText && (
-                              <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-                                {msg.content.postGraphText}
-                              </div>
-                            )}
-                            {msg.content?.locations && (
-                              <div style={{ marginTop: '20px' }}>
-                                {msg.content.locations.map((location, index) => (
-                                  <FollowUpButton 
-                                    key={index}
-                                    onClick={() => handleQuestion("SHOW_BRICKELL_DINING")}
-                                  >
-                                    Explore {location.name}'s power grid density
-                                  </FollowUpButton>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        {/* Show Brickell-specific content */}
-                        {msg.content?.action === 'navigate' && (
-                          <>
-                            <BrickellGraph />
-                            {msg.content?.postGraphText && (
-                              <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-                                {msg.content.postGraphText}
-                              </div>
-                            )}
-                            {msg.content.poiInfo && (
-                              <div style={{ 
-                                margin: '20px 0',
-                                padding: '12px',
-                                background: 'rgba(255, 255, 255, 0.05)',
-                                borderRadius: '8px'
-                              }}>
-                                <div style={{ marginBottom: '8px' }}>
-                                  <span style={{ color: '#FF4500' }}>Points of Interest:</span> {msg.content.poiInfo.poiCount}
-                                </div>
-                                <div style={{ marginBottom: '16px' }}>
-                                  <span style={{ color: '#FF4500' }}>Types:</span> {msg.content.poiInfo.poiTypes.join(', ')}
-                                </div>
-                                
-                                {/* Add the new follow-up buttons */}
-                                {msg.content.poiInfo.typeFollowUps && (
-                                  <div style={{ marginTop: '16px' }}>
-                                    {msg.content.poiInfo.typeFollowUps.map((followUp, index) => (
-                                      <FollowUpButton 
-                                        key={index}
-                                        onClick={() => handleQuestion(followUp.prompt)}
-                                      >
-                                        {followUp.text}
-                                      </FollowUpButton>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {msg.content.followUpSuggestions && (
-                              <div style={{ marginTop: '20px' }}>
-                                {msg.content.followUpSuggestions.map((followUp, index) => (
-                                  <FollowUpButton 
-                                    key={index}
-                                    onClick={() => handleQuestion(followUp.prompt)}
-                                  >
-                                    {followUp.text}
-                                  </FollowUpButton>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        {msg.content?.action === 'showGraphs' && (
-                            <div style={{ marginTop: '20px' }}>
-                                {msg.content.graphs.map((graph, index) => (
-                                    <div key={index} style={{ 
-                                        marginBottom: '20px',
-                                        background: 'rgba(0, 0, 0, 0.2)',
-                                        borderRadius: '8px',
-                                        padding: '15px',
-                                        fontSize: '12px'
-                                    }}>
-                                        <div style={{ 
-                                            marginBottom: '15px',
-                                            color: '#fff'
-                                        }}>
-                                            <div style={{ 
-                                                fontSize: '13px',
-                                                fontWeight: 500,
-                                                marginBottom: '8px'
-                                            }}>
-                                                {index === 0 ? 'Power Grid Capacity (MW)' : 'Smart Grid Integration (%)'}
-                                            </div>
-                                            <div style={{ 
-                                                fontSize: '11px',
-                                                color: 'rgba(255, 255, 255, 0.6)',
-                                                marginBottom: '5px'
-                                            }}>
-                                                {index === 0 
-                                                    ? 'Projected power capacity needs based on growth patterns'
-                                                    : 'Smart grid adoption rate across infrastructure'
-                                                }
-                                            </div>
-                                        </div>
-
-                                        <ResponsiveContainer width="100%" height={200}>
-                                            <LineChart 
-                                                data={graph.data}
-                                                margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
-                                            >
-                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                                                <XAxis 
-                                                    dataKey="year" 
-                                                    stroke="#999" 
-                                                    tick={{ fill: '#999', fontSize: 11 }}
-                                                    tickSize={8}
-                                                />
-                                                <YAxis 
-                                                    stroke="#999"
-                                                    tick={{ fill: '#999', fontSize: 11 }}
-                                                    width={35}
-                                                    tickSize={8}
-                                                />
-                                                <Tooltip 
-                                                    contentStyle={{
-                                                        background: 'rgba(0, 0, 0, 0.8)',
-                                                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                                                        borderRadius: '4px',
-                                                        color: '#fff',
-                                                        fontSize: '11px'
-                                                    }}
-                                                />
-                                                <Legend 
-                                                    verticalAlign="top"
-                                                    height={36}
-                                                    content={({ payload }) => (
-                                                        <div style={{ 
-                                                            display: 'flex',
-                                                            justifyContent: 'center',
-                                                            gap: '20px',
-                                                            fontSize: '11px',
-                                                            color: '#999'
-                                                        }}>
-                                                            {payload.map((entry, i) => (
-                                                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                    <span style={{ 
-                                                                        width: '12px',
-                                                                        height: '2px',
-                                                                        background: entry.color,
-                                                                        display: 'inline-block',
-                                                                        ...(entry.strokeDasharray && { borderTop: `2px ${entry.color} dashed` })
-                                                                    }}/>
-                                                                    <span>{entry.value === 'capacity' ? 'Current Trend' : 
-                                                                           entry.value === 'smart' ? 'Optimized' : 'Baseline'}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                />
-                                                <Line 
-                                                    type="monotone" 
-                                                    dataKey="capacity" 
-                                                    name="Current Trend"
-                                                    stroke="#FF4500"
-                                                    strokeWidth={1.5}
-                                                    dot={{ fill: '#FF4500', r: 3 }}
-                                                    activeDot={{ r: 4 }}
-                                                />
-                                                <Line 
-                                                    type="monotone" 
-                                                    dataKey="smart" 
-                                                    name="Optimized"
-                                                    stroke="#FF6E40" 
-                                                    strokeDasharray="5 5"
-                                                    strokeWidth={1.5}
-                                                    dot={{ fill: '#FF6E40', r: 3 }}
-                                                    activeDot={{ r: 4 }}
-                                                />
-                                                <Line 
-                                                    type="monotone" 
-                                                    dataKey="baseline" 
-                                                    name="Baseline"
-                                                    stroke="#FFAB91" 
-                                                    strokeDasharray="3 3"
-                                                    strokeWidth={1.5}
-                                                    dot={{ fill: '#FFAB91', r: 3 }}
-                                                    activeDot={{ r: 4 }}
-                                                />
-                                            </LineChart>
-                                        </ResponsiveContainer>
-
-                                        <div style={{ 
-                                            marginTop: '10px',
-                                            fontSize: '11px',
-                                            color: 'rgba(255, 255, 255, 0.6)'
-                                        }}>
-                                            {index === 0 
-                                                ? 'Projected capacity needs show increasing demand, with optimized scenarios suggesting higher requirements for future growth.'
-                                                : 'Smart grid adoption is expected to accelerate, particularly in optimized deployment scenarios.'
-                                            }
-                                        </div>
-                                    </div>
-                                ))}
-                                
-                                <div style={{ marginTop: '20px' }}>
-                                    <FollowUpButton 
-                                        onClick={async () => {
-                                            const text = "Explore Brickell's power grid density";
-                                            setMessages(prevMessages => [...prevMessages, {
-                                                isUser: true,
-                                                content: text
-                                            }]);
-                                            
-                                            const response = await handleQuestion("SHOW_GRID_DENSITY");
-                                            setMessages(prevMessages => [...prevMessages, {
-                                                isUser: false,
-                                                content: {
-                                                    ...response,
-                                                    followUpSuggestions: [
-                                                        {
-                                                            text: "How does the Smart Grid optimize power distribution?",
-                                                            prompt: "SHOW_SMART_OPTIMIZATION"
-                                                        },
-                                                        {
-                                                            text: "Show Smart Grid sensor network coverage",
-                                                            prompt: "SHOW_SENSOR_COVERAGE"
-                                                        },
-                                                        {
-                                                            text: "What AI systems manage the Smart Grid?",
-                                                            prompt: "SHOW_SMART_GRID_AI"
-                                                        }
-                                                    ]
-                                                }
-                                            }]);
-                                        }}
-                                    >
-                                        Explore Brickell's power grid density
-                                    </FollowUpButton>
-                                    
-                                    <FollowUpButton 
-                                        onClick={async () => {
-                                            const text = "What impact would smart grid adoption have on costs?";
-                                            setMessages(prevMessages => [...prevMessages, {
-                                                isUser: true,
-                                                content: text
-                                            }]);
-                                            const response = await handleQuestion("SHOW_SMART_GRID_IMPACT");
-                                            setMessages(prevMessages => [...prevMessages, {
-                                                isUser: false,
-                                                content: response
-                                            }]);
-                                        }}
-                                    >
-                                        What impact would smart grid adoption have on costs?
-                                    </FollowUpButton>
-                                    
-                                    <FollowUpButton 
-                                        onClick={async () => {
-                                            const text = "Show sustainability forecast for next 5 years";
-                                            setMessages(prevMessages => [...prevMessages, {
-                                                isUser: true,
-                                                content: text
-                                            }]);
-                                            const response = await handleQuestion("SHOW_SUSTAINABILITY_FORECAST");
-                                            setMessages(prevMessages => [...prevMessages, {
-                                                isUser: false,
-                                                content: response
-                                            }]);
-                                        }}
-                                    >
-                                        Show sustainability forecast for next 5 years
-                                    </FollowUpButton>
-                                </div>
-                            </div>
-                        )}
-
-                        {msg.content?.zoomOutButton && (
+                        {msg.content.quickActions && (
                           <div style={{ marginTop: '20px' }}>
-                            <button
-                              onClick={() => {
-                                if (map.current) {
-                                  // Create a draggable popup
-                                  const popup = new mapboxgl.Popup({
-                                    closeButton: true,
-                                    closeOnClick: false,
-                                    className: 'custom-popup custom-draggable-popup',
-                                    maxWidth: '300px',
-                                    draggable: true
-                                  })
-                                    .setLngLat([-80.1918, 25.7650])
-                                    .setHTML(`
-                                      <div style="
-                                        background: rgba(0, 0, 0, 0.85);
-                                        color: white;
-                                        padding: 20px;
-                                        border-radius: 8px;
-                                        font-family: 'SF Mono', monospace;
-                                        cursor: move;
-                                      ">
-                                        <div style="
-                                          margin: 0 0 12px 0;
-                                          color: #FF4500;
-                                          font-size: 16px;
-                                          display: flex;
-                                          align-items: center;
-                                          justify-content: space-between;
-                                        ">
-                                          <span>Power Grid Overview</span>
-                                          <span style="
-                                            font-size: 12px;
-                                            color: rgba(255,255,255,0.5);
-                                          ">⟺ Drag to move</span>
-                                        </div>
-                                        <div style="
-                                          font-size: 14px;
-                                          line-height: 1.4;
-                                        ">
-                                          <p>• 45+ power nodes per square mile</p>
-                                          <p>• 85% smart grid coverage</p>
-                                          <p>• N+2 redundancy systems</p>
-                                          <p>• 35% growth capacity</p>
-                                        </div>
-                                        <button id="zoomOutBtn" style="
-                                          width: 100%;
-                                          margin-top: 16px;
-                                          padding: 8px;
-                                          background: rgba(255, 69, 0, 0.2);
-                                          border: 1px solid rgba(255, 69, 0, 0.3);
-                                          border-radius: 4px;
-                                          color: #FF4500;
-                                          cursor: pointer;
-                                          font-family: 'SF Mono', monospace;
-                                          font-size: 12px;
-                                          transition: all 0.2s;
-                                        ">View District Overview</button>
-                                      </div>
-                                    `)
-                                    .addTo(map.current);
-
-                                  // Add click handler for the zoom out button
-                                  const zoomOutBtn = document.getElementById('zoomOutBtn');
-                                  if (zoomOutBtn) {
-                                    zoomOutBtn.addEventListener('click', (e) => {
-                                      e.stopPropagation();
-                                      
-                                      // Close the popup
-                                      popup.remove();
-                                      
-                                      // Zoom out much further
-                                      map.current.flyTo({
-                                        zoom: map.current.getZoom() - 5, // Increased zoom out amount
-                                        duration: 1500
-                                      });
-
-                                      // Create the circle and callout for Brickell
-                                      const brickellFeature = {
-                                        type: 'Feature',
-                                        geometry: {
-                                          type: 'Point',
-                                          coordinates: [-80.1918, 25.7650]
-                                        },
-                                        properties: {
-                                          name: 'Brickell',
-                                          description: "Miami's financial district"
-                                        }
-                                      };
-
-                                      // Add/update the circle
-                                      const source = map.current.getSource('area-highlights');
-                                      if (source) {
-                                        source.setData({
-                                          type: 'FeatureCollection',
-                                          features: [brickellFeature]
-                                        });
-                                      }
-
-                                      // Add larger location marker in center
-                                      const markerElement = document.createElement('div');
-                                      markerElement.innerHTML = `
-                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="#FF4500" style="filter: drop-shadow(0px 0px 6px rgba(0,0,0,0.3));">
-                                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                                        </svg>
-                                      `;
-
-                                      new mapboxgl.Marker({
-                                        element: markerElement,
-                                        anchor: 'center'
-                                      })
-                                        .setLngLat([-80.1918, 25.7650])
-                                        .addTo(map.current);
-
-                                      // Ensure the circle outline layer exists
-                                      if (!map.current.getLayer('area-highlights-outline')) {
-                                        map.current.addLayer({
-                                          'id': 'area-highlights-outline',
-                                          'type': 'circle',
-                                          'source': 'area-highlights',
-                                          'paint': {
-                                            'circle-radius': 100,
-                                            'circle-color': 'transparent',
-                                            'circle-stroke-width': 2,
-                                            'circle-stroke-color': '#FF4500',
-                                            'circle-opacity': 0.8
-                                          }
-                                        });
-                                      }
-
-                                      // Add the callout
-                                      const calloutHTML = document.createElement('div');
-                                      calloutHTML.className = 'callout-annotation';
-                                      calloutHTML.innerHTML = `
-                                        <div style="
-                                          background: rgba(0, 0, 0, 0.85);
-                                          color: white;
-                                          padding: 15px;
-                                          border-radius: 8px;
-                                          max-width: 300px;
-                                          position: relative;
-                                          font-family: 'SF Mono', monospace;
-                                          font-size: 14px;
-                                          line-height: 1.4;
-                                        ">
-                                          <div style="
-                                            display: flex;
-                                            align-items: center;
-                                            justify-content: space-between;
-                                            margin-bottom: 8px;
-                                          ">
-                                            <h3 style="
-                                              margin: 0;
-                                              color: white;
-                                              font-size: 16px;
-                                              font-weight: 500;
-                                            ">Brickell</h3>
-                                            <span style="display: flex; gap: 12px; color: #FF4500;">
-                                              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
-                                              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6h-6z"/></svg>
-                                              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
-                                            </span>
-                                          </div>
-                                          <div style="
-                                            font-size: 13px;
-                                            color: rgba(255, 255, 255, 0.8);
-                                            margin-top: 12px;
-                                            padding-left: 8px;
-                                            border-left: 2px solid rgba(255, 69, 0, 0.5);
-                                          ">
-                                            • 45+ power nodes/sq mile<br>
-                                            • 8 power substations<br>
-                                            • 85% smart grid coverage<br>
-                                            • N+2 redundancy systems<br>
-                                            • 35% growth capacity<br>
-                                            • 12 high-capacity transformers
-                                          </div>
-                                        </div>
-                                      `;
-
-                                      new mapboxgl.Marker({
-                                        element: calloutHTML,
-                                        anchor: 'left',
-                                      })
-                                        .setLngLat([-80.1918, 25.7650])
-                                        .setOffset([100, 100])
-                                        .addTo(map.current);
-                                    });
-
-                                    // Add hover effects
-                                    zoomOutBtn.addEventListener('mouseover', () => {
-                                      zoomOutBtn.style.background = 'rgba(255, 69, 0, 0.3)';
-                                    });
-                                    zoomOutBtn.addEventListener('mouseout', () => {
-                                      zoomOutBtn.style.background = 'rgba(255, 69, 0, 0.2)';
-                                    });
-                                  }
-
-                                  // Add drag functionality
-                                  const popupEl = popup.getElement();
-                                  let isDragging = false;
-                                  let startX, startY, startLeft, startTop;
-
-                                  popupEl.addEventListener('mousedown', (e) => {
-                                    if (e.target.closest('.mapboxgl-popup-content')) {
-                                      isDragging = true;
-                                      startX = e.clientX;
-                                      startY = e.clientY;
-                                      const rect = popupEl.getBoundingClientRect();
-                                      startLeft = rect.left;
-                                      startTop = rect.top;
-                                      
-                                      popupEl.style.cursor = 'grabbing';
-                                    }
-                                  });
-
-                                  document.addEventListener('mousemove', (e) => {
-                                    if (!isDragging) return;
-                                    
-                                    const dx = e.clientX - startX;
-                                    const dy = e.clientY - startY;
-                                    
-                                    const point = map.current.unproject([
-                                      startLeft + dx,
-                                      startTop + dy
-                                    ]);
-                                    
-                                    popup.setLngLat(point);
-                                  });
-
-                                  document.addEventListener('mouseup', () => {
-                                    isDragging = false;
-                                    if (popupEl) {
-                                      popupEl.style.cursor = 'move';
-                                    }
-                                  });
-
-                                  // Clean up event listeners when popup is closed
-                                  popup.on('close', () => {
-                                    document.removeEventListener('mousemove', null);
-                                    document.removeEventListener('mouseup', null);
-                                  });
-                                }
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '12px',
-                                backgroundColor: '#FF4500',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                fontSize: '14px',
-                                fontWeight: '500',
-                                transition: 'background-color 0.2s',
-                              }}
-                              onMouseOver={(e) => e.target.style.backgroundColor = '#FF5722'}
-                              onMouseOut={(e) => e.target.style.backgroundColor = '#FF4500'}
-                            >
-                              {msg.content.zoomOutButton.text}
-                            </button>
+                            {msg.content.quickActions.map((action, index) => (
+                              <FollowUpButton 
+                                key={index}
+                                onClick={() => handleQuickAction(action, map, setMessages, setIsLoading)}
+                              >
+                                {action.text}
+                              </FollowUpButton>
+                            ))}
                           </div>
                         )}
                       </>
                     )}
                   </MessageContent>
                 </Message>
-              );
-            })}
-            
-            {isLoading && (
-              <Message>
-                <MessageHeader>
-                  <Avatar />
-                  <Sender>ATLAS</Sender>
-                </MessageHeader>
-                <MessageContent>
-                  <LoadingMessage>
-                    <LoadingStep $delay={300}>
-                      <span className="icon">🗺️</span>
-                      <span className="text">Analyzing energy consumption patterns...</span>
-                      <span className="dots" />
-                    </LoadingStep>
-                    <LoadingStep $delay={600}>
-                      <span className="icon">📡</span>
-                      <span className="text">Scanning 5G infrastructure coverage...</span>
-                      <span className="dots" />
-                    </LoadingStep>
-                    <LoadingStep $delay={900}>
-                      <span className="icon">⚡</span>
-                      <span className="text">Processing smart grid distribution...</span>
-                      <span className="dots" />
-                    </LoadingStep>
-                    <LoadingStep $delay={1200}>
-                      <span className="icon">🏢</span>
-                      <span className="text">Mapping commercial density zones...</span>
-                      <span className="dots" />
-                    </LoadingStep>
-                    <LoadingStep $delay={1500}>
-                      <span className="icon">📊</span>
-                      <span className="text">Correlating FPL power usage data...</span>
-                      <span className="dots" />
-                    </LoadingStep>
-                  </LoadingMessage>
-                </MessageContent>
-              </Message>
-            )}
-          </>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </ChatMessages>
-      
-      <InputArea>
-        <Input 
-          placeholder="Message AI Map..."
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyPress={handleSubmit}
-        />
-      </InputArea>
+              ))}
 
-      {/* Popup for "Hello" message */}
-      {showPopup && (
-        <Popup>
-          Hello
-          <CloseButton onClick={() => setShowPopup(false)}>Close</CloseButton>
-        </Popup>
-      )}
-    </Panel>
+              {isLoading && (
+                <Message>
+                  <MessageHeader>
+                    <Avatar />
+                    <Sender>ATLAS</Sender>
+                  </MessageHeader>
+                  <MessageContent>
+                    <LoadingMessage>
+                      <LoadingStep $delay={300}>
+                        <span className="icon">🌊</span>
+                        <span className="text">Analyzing flood patterns...</span>
+                        <span className="dots" />
+                      </LoadingStep>
+                      <LoadingStep $delay={600}>
+                        <span className="icon">📊</span>
+                        <span className="text">Processing historical flood data...</span>
+                        <span className="dots" />
+                      </LoadingStep>
+                      <LoadingStep $delay={900}>
+                        <span className="icon">🗺️</span>
+                        <span className="text">Mapping flood-prone areas...</span>
+                        <span className="dots" />
+                      </LoadingStep>
+                    </LoadingMessage>
+                  </MessageContent>
+                </Message>
+              )}
+            </>
+          )}
+          <div ref={messagesEndRef} />
+        </ChatMessages>
+
+        <InputArea>
+          <Input 
+            placeholder="Ask about Houston flooding..."
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleSubmit(e);
+              }
+            }}
+          />
+        </InputArea>
+      </Panel>
+
+      <CollapseIconContainer $isCollapsed={isCollapsed}>
+        <CollapseIcon 
+          onClick={() => setIsCollapsed(!isCollapsed)} 
+          title={isCollapsed ? "Expand panel" : "Collapse panel"}
+          $isCollapsed={isCollapsed}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
+          </svg>
+        </CollapseIcon>
+      </CollapseIconContainer>
+    </>
   );
 };
-
-// Styled components
-const Popup = styled.div`
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 20px;
-  border-radius: 8px;
-  z-index: 1000;
-`;
-
-const CloseButton = styled.button`
-  margin-top: 10px;
-  background: #FF4500;
-  border: none;
-  padding: 8px 16px;
-  color: white;
-  border-radius: 4px;
-  cursor: pointer;
-`;
 
 export default AIChatPanel; 

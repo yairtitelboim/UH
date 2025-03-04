@@ -10,5 +10,8 @@
       "changeOrigin": true,
       "secure": false
     }
+  },
+  "dependencies": {
+    "@turf/turf": "^7.2.0"
   }
-} 
+}

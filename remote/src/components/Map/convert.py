@@ -2,6 +2,7 @@ import json
 import os
 from typing import Dict, List
 import math
+import geopandas as gpd
 
 def convert_to_geojson(input_file='dc_area_peering.json', output_file='../../../public/dc_peering_layers.json'):
     """Convert PeeringDB data to multiple GeoJSON layers for the map"""
@@ -168,5 +169,47 @@ def create_offset_point(base_coords, index, total):
         base_coords[1] + radius * math.sin(angle)
     ]
 
+def convert_shapefiles_to_geojson(input_dir='../../../public/kx-houston-texas-census-block-group-boundaries-2010-SHP', 
+                                 output_dir='../../../public'):
+    """Convert shapefiles to GeoJSON format"""
+    
+    # Get absolute paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    input_dir = os.path.abspath(os.path.join(script_dir, input_dir))
+    output_dir = os.path.abspath(os.path.join(script_dir, output_dir))
+    
+    print(f"🔍 Looking for shapefiles in: {input_dir}")
+    print(f"📂 Will save GeoJSON files to: {output_dir}")
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    try:
+        # Construct input shapefile path
+        input_path = os.path.join(input_dir, "houston-texas-census-block-group-boundaries-2010.shp")
+        
+        # Read shapefile using geopandas
+        print(f"\nProcessing Houston census blocks...")
+        gdf = gpd.read_file(input_path)
+        
+        # Convert to EPSG:4326 (WGS84) if it's not already
+        if gdf.crs != 'EPSG:4326':
+            gdf = gdf.to_crs('EPSG:4326')
+        
+        # Construct output path
+        output_file = os.path.join(output_dir, "houston-census-blocks.geojson")
+        
+        # Save as GeoJSON
+        gdf.to_file(output_file, driver='GeoJSON')
+        
+        print(f"✅ Converted to {output_file}")
+        print(f"Features: {len(gdf)}")
+        print(f"Columns: {list(gdf.columns)}")
+        
+    except Exception as e:
+        print(f"❌ Error processing shapefile: {str(e)}")
+    
+    print("\nConversion complete!")
+
 if __name__ == "__main__":
-    convert_to_geojson()
+    convert_shapefiles_to_geojson()

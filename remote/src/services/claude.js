@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Add export to the MOCK_RESPONSES declaration
 export const MOCK_RESPONSES = {
-  "Find high-energy, high-connectivity zones in Miami": {
+  "Find neighborhoods with the fastest housing growth": {
     content: [{
       text: JSON.stringify({
         action: "showMultipleLocations",
@@ -19,7 +19,7 @@ export const MOCK_RESPONSES = {
             callout: {
               title: "Brickell",
               details: [
-                "Capacity: 85.2% • Growth: +12.4%",
+                "Growth: +12.4% • Occupancy: 92%",
                 "Mixed-use development • High density zone"
               ]
             }
@@ -36,7 +36,7 @@ export const MOCK_RESPONSES = {
             callout: {
               title: "South Beach",
               details: [
-                "Capacity: 73.8% • Growth: +9.2%",
+                "Growth: +9.2% • Occupancy: 88%",
                 "Entertainment district • Tourism zone"
               ]
             }
@@ -53,7 +53,7 @@ export const MOCK_RESPONSES = {
             callout: {
               title: "Wynwood",
               details: [
-                "Capacity: 68.5% • Growth: +15.7%",
+                "Growth: +15.7% • Occupancy: 85%",
                 "Arts & Tech district • Cultural zone"
               ]
             }
@@ -63,9 +63,22 @@ export const MOCK_RESPONSES = {
           sw: [-80.30, 25.75],
           ne: [-80.10, 25.79]
         },
-        preGraphText: "I've analyzed Miami's energy consumption patterns and broadband infrastructure. Let's examine how these metrics have evolved over the past five years, focusing on Brickell and South Beach.",
-        postGraphText: "The data reveals an interesting pattern: Brickell has emerged as Miami's premier high-energy zone, reaching a 92 on our infrastructure index by 2023 - notably higher than both the Miami metro average and national benchmarks. While South Beach maintains strong metrics with an 88 index score, Brickell's trajectory indicates it's becoming Miami's leading hub for energy consumption and connectivity.\n\nBoth areas demonstrate exceptional infrastructure development, showing significant growth since 2020 and now operating well above typical urban levels. Which area would you like to explore in detail?",
-        followUpSuggestions: [],
+        preGraphText: "I've analyzed Miami's housing market trends by combining building permit data, occupancy rates, and demographic shifts—with a hint of energy efficiency metrics to gauge building performance. Let's examine how these factors have evolved over the past five years, focusing on Brickell and South Beach.",
+        postGraphText: "The data reveals an interesting pattern: Brickell has emerged as Miami's premier housing growth zone, scoring a 92 on our housing development index by 2023—remarkably higher than both the Miami metro average and national benchmarks. While South Beach also shows robust residential demand with an 88 index score, Brickell's rapid influx of new multifamily developments and mixed-use projects signals a transformative shift in the urban landscape. Both areas have seen significant growth since 2020, challenging conventional views on Miami's residential markets.\n\nWhich area would you like to explore in detail?",
+        followUpSuggestions: [
+          {
+            text: "Explore Brickell's housing dynamics",
+            prompt: "SHOW_BRICKELL_HOUSING"
+          },
+          {
+            text: "Explore South Beach's residential trends",
+            prompt: "SHOW_SOUTHBEACH_HOUSING"
+          },
+          {
+            text: "Explore Wynwood's mixed-use transformation",
+            prompt: "SHOW_WYNWOOD_HOUSING"
+          }
+        ],
         quickActions: [
           {
             text: "Demographic Stats",
@@ -307,46 +320,49 @@ export const MOCK_RESPONSES = {
     content: [{
       text: JSON.stringify({
         action: "showGraphs",
-        preGraphText: "Here's our AI forecast for Brickell's energy infrastructure needs:",
+        preGraphText: "Here's our AI forecast for Brickell's housing dynamics across census blocks:",
         graphs: [
           {
+            title: "Housing Density Growth",
             data: [
-              { month: 'Jan', value: 850, name: 'Baseline' },
-              { month: 'Mar', value: 870, name: 'Baseline' },
-              { month: 'May', value: 900, name: 'Baseline' },
-              { month: 'Jul', value: 950, name: 'Baseline' },
-              { month: 'Sep', value: 980, name: 'Baseline' },
-              { month: 'Nov', value: 1000, name: 'Baseline' }
+              { year: '2020', units: 450, luxury: 180, baseline: 400 },
+              { year: '2021', units: 520, luxury: 220, baseline: 420 },
+              { year: '2022', units: 580, luxury: 280, baseline: 440 },
+              { year: '2023', units: 680, luxury: 350, baseline: 460 },
+              { year: '2024', units: 750, luxury: 420, baseline: 480 },
+              { year: '2025', units: 850, luxury: 510, baseline: 500 }
             ],
-            type: 'line',
-            color: '#1E88E5'
+            dataKeys: ['units', 'luxury', 'baseline'],
+            labels: ['Total Units', 'Luxury Units', 'Base Housing Need']
           },
           {
+            title: "Census Block Development",
             data: [
-              { month: 'Jan', value: 880, name: 'Scenario 1' },
-              { month: 'Mar', value: 910, name: 'Scenario 1' },
-              { month: 'May', value: 950, name: 'Scenario 1' },
-              { month: 'Jul', value: 1020, name: 'Scenario 1' },
-              { month: 'Sep', value: 1060, name: 'Scenario 1' },
-              { month: 'Nov', value: 1100, name: 'Scenario 1' }
-            ],
-            type: 'line',
-            color: '#42A5F5'
+              { name: 'High Density', value: 45 },
+              { name: 'Mixed Use', value: 28 },
+              { name: 'Residential', value: 15 },
+              { name: 'Commercial', value: 12 }
+            ]
           }
         ],
-        postGraphText: "The blue lines show projected energy demand under different growth scenarios.",
+        postGraphText: "Analysis of Brickell's census blocks reveals several key trends:\n\n" +
+                      "• Dramatic growth in central blocks (>1200 units) showing 15% annual increase\n" +
+                      "• Mid-density blocks (600-900 units) experiencing rapid transformation\n" +
+                      "• Stable growth in established areas (<300 units)\n" +
+                      "• Mixed-use development driving density in blocks 2 and 3\n\n" +
+                      "The orange gradient highlights intensity of development, with darker shades indicating established neighborhoods and brighter tones showing recent growth hotspots.",
         followUpSuggestions: [
           {
-            text: "How does the Smart Grid optimize power distribution?",
-            prompt: "SHOW_SMART_OPTIMIZATION"
+            text: "Analyze housing trends in detail",
+            prompt: "SHOW_BRICKELL_HOUSING"
           },
           {
-            text: "Show Smart Grid sensor network coverage",
-            prompt: "SHOW_SENSOR_COVERAGE"
+            text: "View development pipeline",
+            prompt: "SHOW_DEVELOPMENT_PIPELINE"
           },
           {
-            text: "What AI systems manage the Smart Grid?",
-            prompt: "SHOW_SMART_GRID_AI"
+            text: "Compare with nearby districts",
+            prompt: "COMPARE_HOUSING_DENSITY"
           }
         ]
       })
@@ -391,12 +407,12 @@ export const MOCK_RESPONSES = {
           ]
         },
         preGraphText: "Analyzing Brickell's power grid density... The district features one of the most sophisticated urban power networks in Florida, with multiple layers of infrastructure supporting its high-energy demands.",
-        postGraphText: "Key findings about Brickell's power grid density:\n\n" +
-                      "• Peak Density: 45+ power nodes per square mile\n" +
-                      "• Smart Grid Coverage: 85% of district\n" +
-                      "• Redundancy Level: N+2 backup systems\n" +
-                      "• Growth Capacity: 35% additional headroom\n\n" +
-                      "The highlighted zones show areas of highest power infrastructure concentration, with brighter colors indicating greater density of smart grid nodes.",
+        postGraphText: "Key findings about Brickell's housing density:\n\n" +
+                      "• Residential Density: 45+ units per acre\n" +
+                      "• Mixed-Use Coverage: 85% of district\n" +
+                      "• Occupancy Rate: 92% average\n" +
+                      "• Development Capacity: 35% growth potential\n\n" +
+                      "The highlighted zones show areas of highest residential concentration, with brighter colors indicating greater density of housing units and mixed-use developments.",
         followUpSuggestions: [
           {
             text: "Analyze power distribution by node type",
@@ -446,10 +462,251 @@ export const MOCK_RESPONSES = {
     content: [{
       text: "hi hi"
     }]
+  },
+  "Where are the major flood-prone areas?": {
+    content: [{
+      text: JSON.stringify({
+        action: "showCommercialCluster",
+        clusterData: {
+          name: "Westheimer & Post Oak",
+          type: "Retail & Office Hub",
+          price: "$8.4M",
+          priceUnit: "daily economic impact",
+          address: "Post Oak Blvd & Westheimer Rd",
+          city: "Houston, TX 77056",
+          properties: 42,
+          sqft: "1.2M",
+          avgFloodDepth: 2.8,
+          lastFlood: "Hurricane Harvey (2017)",
+          keyTenants: "Galleria Mall, Financial Services, Luxury Retail",
+          imageUrl: "https://images.unsplash.com/photo-1582225373839-3f67b3057106?q=80&w=2787&auto=format&fit=crop"
+        },
+        llmModels: [
+          { id: 'gpt4', name: 'GPT-4', color: '#3b82f6', confidence: 89 },
+          { id: 'claude3', name: 'Claude 3', color: '#8b5cf6', confidence: 92 },
+          { id: 'llama3', name: 'Llama 3', color: '#10b981', confidence: 85 },
+          { id: 'deepseek', name: 'DeepSeek-R1', color: '#f97316', confidence: 87 }
+        ],
+        riskFactorData: [
+          { 
+            factor: 'Elevation', 
+            'GPT-4': 25, 
+            'Claude 3': 20, 
+            'Llama 3': 38,
+            'DeepSeek-R1': 42, 
+            description: 'Property sits 3.5ft below surrounding area'
+          },
+          { 
+            factor: 'Building Age', 
+            'GPT-4': 15, 
+            'Claude 3': 23, 
+            'Llama 3': 10,
+            'DeepSeek-R1': 12, 
+            description: 'Most structures built between 1990-2005'
+          },
+          { 
+            factor: 'Power Infrastructure', 
+            'GPT-4': 25, 
+            'Claude 3': 30, 
+            'Llama 3': 12,
+            'DeepSeek-R1': 18, 
+            description: 'Multiple substations with partial redundancy'
+          },
+          { 
+            factor: 'Bayou Proximity', 
+            'GPT-4': 20, 
+            'Claude 3': 12, 
+            'Llama 3': 32,
+            'DeepSeek-R1': 25, 
+            description: '0.6 miles to Buffalo Bayou'
+          },
+          { 
+            factor: 'Business Continuity', 
+            'GPT-4': 10, 
+            'Claude 3': 15, 
+            'Llama 3': 5,
+            'DeepSeek-R1': 3, 
+            description: '64% of businesses have continuity plans'
+          },
+          { 
+            factor: 'Historical Flooding', 
+            'GPT-4': 5, 
+            'Claude 3': 5, 
+            'Llama 3': 3,
+            'DeepSeek-R1': 5, 
+            description: '2 major flood events in past 10 years'
+          }
+        ],
+        recoveryTimelineData: [
+          { day: 0, 'GPT-4': 0, 'Claude 3': 0, 'Llama 3': 0, 'DeepSeek-R1': 0 },
+          { day: 2, 'GPT-4': 8, 'Claude 3': 15, 'Llama 3': 5, 'DeepSeek-R1': 3 },
+          { day: 4, 'GPT-4': 21, 'Claude 3': 32, 'Llama 3': 11, 'DeepSeek-R1': 9 },
+          { day: 6, 'GPT-4': 36, 'Claude 3': 48, 'Llama 3': 18, 'DeepSeek-R1': 16 },
+          { day: 8, 'GPT-4': 47, 'Claude 3': 62, 'Llama 3': 26, 'DeepSeek-R1': 35 },
+          { day: 10, 'GPT-4': 58, 'Claude 3': 73, 'Llama 3': 35, 'DeepSeek-R1': 52 },
+          { day: 12, 'GPT-4': 67, 'Claude 3': 81, 'Llama 3': 43, 'DeepSeek-R1': 63 },
+          { day: 14, 'GPT-4': 74, 'Claude 3': 89, 'Llama 3': 51, 'DeepSeek-R1': 70 },
+          { day: 16, 'GPT-4': 81, 'Claude 3': 94, 'Llama 3': 58, 'DeepSeek-R1': 76 },
+          { day: 18, 'GPT-4': 86, 'Claude 3': 98, 'Llama 3': 65, 'DeepSeek-R1': 82 },
+          { day: 20, 'GPT-4': 91, 'Claude 3': 100, 'Llama 3': 71, 'DeepSeek-R1': 87 },
+          { day: 24, 'GPT-4': 97, 'Claude 3': 100, 'Llama 3': 83, 'DeepSeek-R1': 95 },
+          { day: 28, 'GPT-4': 100, 'Claude 3': 100, 'Llama 3': 91, 'DeepSeek-R1': 98 },
+          { day: 32, 'GPT-4': 100, 'Claude 3': 100, 'Llama 3': 96, 'DeepSeek-R1': 100 },
+          { day: 36, 'GPT-4': 100, 'Claude 3': 100, 'Llama 3': 100, 'DeepSeek-R1': 100 }
+        ],
+        modelConclusions: [
+          {
+            id: 'llama3',
+            name: 'Llama 3',
+            color: '#10b981',
+            recoveryTime: '36 days',
+            riskScore: 78,
+            keyInsight: 'Elevation is the dominant risk factor',
+            uniqueFinding: 'Historical flood patterns suggest longer recovery periods than other models predict'
+          },
+          {
+            id: 'deepseek',
+            name: 'DeepSeek-R1',
+            color: '#f97316',
+            recoveryTime: '32 days',
+            riskScore: 73,
+            keyInsight: 'Elevation combined with bayou proximity creates compound risk',
+            uniqueFinding: 'Retail businesses recover significantly slower than office spaces in this area'
+          },
+          {
+            id: 'gpt4',
+            name: 'GPT-4',
+            color: '#3b82f6',
+            recoveryTime: '24 days',
+            riskScore: 65,
+            keyInsight: 'Power infrastructure is the critical path dependency',
+            uniqueFinding: 'Building proximity to backup power grid significantly reduces recovery time'
+          },
+          {
+            id: 'claude3',
+            name: 'Claude 3',
+            color: '#8b5cf6',
+            recoveryTime: '20 days',
+            riskScore: 52,
+            keyInsight: 'Business continuity plans most important for rapid recovery',
+            uniqueFinding: 'Tenants with remote work capabilities recover 42% faster than those without'
+          }
+        ],
+        milestoneCategories: [
+          {
+            name: "Power Restoration",
+            icon: "⚡",
+            category: "infrastructure",
+            models: [
+              { id: "claude3", day: 3, confidence: 92 },
+              { id: "gpt4", day: 5, confidence: 88 },
+              { id: "deepseek", day: 8, confidence: 85 },
+              { id: "llama3", day: 10, confidence: 83 }
+            ]
+          },
+          {
+            name: "Emergency Services",
+            icon: "🚑",
+            category: "services",
+            models: [
+              { id: "claude3", day: 5, confidence: 93 },
+              { id: "gpt4", day: 7, confidence: 94 },
+              { id: "deepseek", day: 9, confidence: 91 },
+              { id: "llama3", day: 12, confidence: 89 }
+            ]
+          },
+          {
+            name: "Road Access",
+            icon: "🛣️",
+            category: "infrastructure",
+            models: [
+              { id: "claude3", day: 7, confidence: 90 },
+              { id: "gpt4", day: 10, confidence: 87 },
+              { id: "deepseek", day: 13, confidence: 86 },
+              { id: "llama3", day: 17, confidence: 82 }
+            ]
+          },
+          {
+            name: "Retail Reopening",
+            icon: "🏪",
+            category: "business",
+            models: [
+              { id: "claude3", day: 10, confidence: 88 },
+              { id: "gpt4", day: 15, confidence: 84 },
+              { id: "deepseek", day: 18, confidence: 81 },
+              { id: "llama3", day: 25, confidence: 79 }
+            ]
+          },
+          {
+            name: "Office Buildings",
+            icon: "🏢",
+            category: "business",
+            models: [
+              { id: "claude3", day: 14, confidence: 87 },
+              { id: "gpt4", day: 18, confidence: 83 },
+              { id: "deepseek", day: 24, confidence: 85 },
+              { id: "llama3", day: 28, confidence: 76 }
+            ]
+          },
+          {
+            name: "Full Operations",
+            icon: "✅",
+            category: "business",
+            models: [
+              { id: "claude3", day: 20, confidence: 92 },
+              { id: "gpt4", day: 24, confidence: 88 },
+              { id: "deepseek", day: 32, confidence: 86 },
+              { id: "llama3", day: 36, confidence: 81 }
+            ]
+          }
+        ],
+        preGraphText: "I've analyzed the flood risk patterns across Houston, with a particular focus on the Westheimer & Post Oak intersection area. This region represents one of our high-priority monitoring zones due to its commercial density and historical flood impacts.",
+        postGraphText: "The analysis reveals several critical insights about this area:\n\n" +
+                      "• Historical Vulnerability: The area experienced significant flooding during Hurricane Harvey with depths reaching 2.8 feet\n" +
+                      "• Infrastructure Impact: The commercial district's power grid and business operations face substantial risks\n" +
+                      "• Recovery Patterns: Different AI models predict varying recovery timelines, ranging from 20 to 36 days\n" +
+                      "• Risk Factors: Elevation and bayou proximity emerge as the dominant risk multipliers\n\n" +
+                      "Would you like to explore specific aspects of the flood risk analysis in more detail?",
+        followUpSuggestions: [
+          {
+            text: "Show historical flood patterns",
+            prompt: "SHOW_HISTORICAL_FLOODS"
+          },
+          {
+            text: "Analyze infrastructure vulnerabilities",
+            prompt: "ANALYZE_INFRASTRUCTURE_RISK"
+          },
+          {
+            text: "View elevation risk zones",
+            prompt: "VIEW_ELEVATION_RISK"
+          }
+        ],
+        quickActions: [
+          {
+            text: "Compare to Other Areas",
+            prompt: "COMPARE_FLOOD_ZONES",
+            icon: "🗺️",
+            description: "View relative flood risks"
+          },
+          {
+            text: "Mitigation Measures",
+            prompt: "SHOW_MITIGATION",
+            icon: "🛡️",
+            description: "Current protection systems"
+          },
+          {
+            text: "Real-time Monitoring",
+            prompt: "SHOW_MONITORING",
+            icon: "📊",
+            description: "Live flood sensors"
+          }
+        ]
+      })
+    }]
   }
 };
 
-console.log("Mock response structure:", JSON.parse(MOCK_RESPONSES["Find high-energy, high-connectivity zones in Miami"].content[0].text));
+console.log("Mock response structure:", JSON.parse(MOCK_RESPONSES["Find neighborhoods with the fastest housing growth"].content[0].text));
 
 // Increase back to original 2.5 seconds for better animation flow
 const simulateDelay = () => new Promise(resolve => setTimeout(resolve, 2500));
@@ -473,7 +730,7 @@ export const LOADING_STEPS = [
     delay: 400
   },
   {
-    icon: "🍽️",
+    icon: "🏗️",
     text: "Scanning Restaurant & Bar Permits...",
     delay: 500
   },
@@ -547,6 +804,50 @@ const BRICKELL_CALLOUT_RESPONSE = {
       ]
     })
   }]
+};
+
+// Add map context validation
+const validateMapContext = (context) => {
+  console.log('🔍 Validating map context:', context);
+  
+  if (!context.mapBounds) {
+    console.warn('⚠️ No map bounds provided');
+    return false;
+  }
+
+  if (!context.visibleLayers) {
+    console.warn('⚠️ No visible layers provided');
+    return false;
+  }
+
+  return true;
+};
+
+// Update handleQuestion to use context
+export const handleQuestion = async (prompt, context) => {
+  console.log('📝 Processing question:', prompt);
+  console.log('🌍 Context:', context);
+
+  // Validate context
+  if (!validateMapContext(context)) {
+    console.warn('⚠️ Invalid map context, using default response');
+    return MOCK_RESPONSES['default'];
+  }
+
+  // Check for mock responses first
+  if (MOCK_RESPONSES[prompt]) {
+    console.log('📦 Using mock response');
+    return MOCK_RESPONSES[prompt];
+  }
+
+  try {
+    const response = await askClaude(prompt, context);
+    console.log('✅ Claude response:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error from Claude:', error);
+    return null;
+  }
 };
 
 export const askClaude = async (prompt, context = {}, mapBounds = null) => {
@@ -696,20 +997,9 @@ export const parseClaudeResponse = (response) => {
     if (response?.content?.[0]?.text) {
       const parsed = JSON.parse(response.content[0].text);
       console.log('Parsed response:', parsed);
-
-      return {
-        action: parsed.action,
-        preGraphText: parsed.preGraphText,
-        postGraphText: parsed.postGraphText,
-        coordinates: parsed.coordinates,
-        zoomLevel: parsed.zoomLevel,
-        locations: parsed.locations,
-        viewBounds: parsed.viewBounds,
-        poiInfo: parsed.poiInfo,
-        followUps: parsed.followUpSuggestions,
-        quickActions: parsed.quickActions,
-        zoomOutButton: parsed.zoomOutButton
-      };
+      
+      // Return all fields from the parsed response
+      return parsed;
     }
 
     if (response?.content) {
@@ -726,7 +1016,7 @@ export const parseClaudeResponse = (response) => {
   } catch (e) {
     console.error("Error parsing response:", e);
     return {
-      preGraphText: "Could not process the response. Please Please try again.",
+      preGraphText: "Could not process the response. Please try again.",
       postGraphText: null,
       poiInfo: null,
       followUps: [],
@@ -735,21 +1025,113 @@ export const parseClaudeResponse = (response) => {
   }
 };
 
-export const handleQuestion = async (prompt, context, mapBounds) => {
-  // Check if we have a mock response for this prompt
-  if (prompt === 'VIEW_TRANSFORMER_CAPACITY') {
-    console.log('Using mock response for development');
-    return {
-      content: [{
-        text: "hi hi"
-      }]
+// Panel-specific AI handling
+export const handlePanelQuestion = async (question, map, setMessages, setIsLoading) => {
+  console.log('🎯 Processing question:', question);
+  setIsLoading(true);
+  
+  try {
+    const bounds = map.current.getBounds();
+    const mapBounds = {
+      sw: bounds.getSouthWest(),
+      ne: bounds.getNorthEast()
     };
+
+    // Get response from Claude service
+    const response = await askClaude(question, {}, mapBounds);
+    const parsed = parseClaudeResponse(response);
+    console.log('🔍 Parsed response:', parsed);
+
+    // Handle map navigation if coordinates are present
+    if (parsed?.coordinates && map.current) {
+      console.log('🗺️ Navigating to:', parsed.coordinates);
+      map.current.flyTo({
+        center: parsed.coordinates,
+        zoom: parsed.zoomLevel || 16,
+        duration: 2000
+      });
+    }
+
+    // Handle layer visibility changes
+    if (parsed?.layers) {
+      console.log('🎨 Updating layer visibility:', parsed.layers);
+      parsed.layers.forEach(layer => {
+        if (map.current.getLayer(layer.id)) {
+          map.current.setLayoutProperty(
+            layer.id,
+            'visibility',
+            layer.visible ? 'visible' : 'none'
+          );
+        }
+      });
+    }
+
+    setMessages(prev => [...prev, 
+      { isUser: true, content: question },
+      { isUser: false, content: parsed }
+    ]);
+
+    return parsed;
+  } catch (error) {
+    console.error('❌ Error processing question:', error);
+    setMessages(prev => [...prev, {
+      isUser: false,
+      content: {
+        preGraphText: "Sorry, I encountered an error processing your request.",
+        postGraphText: null,
+        followUps: []
+      }
+    }]);
+    return null;
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+export const handleQuickAction = async (action, map, setMessages, setIsLoading) => {
+  if (action.prompt === 'VIEW_TRANSFORMER_CAPACITY') {
+    const mockResponse = MOCK_RESPONSES[action.prompt];
+    const parsedResponse = parseClaudeResponse(mockResponse);
+    setMessages(prev => [...prev, {
+      isUser: false,
+      content: parsedResponse
+    }]);
+    return;
   }
 
-  if (MOCK_RESPONSES[prompt]) {
-    console.log('Using mock response for development');
-    return MOCK_RESPONSES[prompt];
+  if (action.prompt === 'SHOW_FUTURE_TRENDS') {
+    setIsLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const mockResponse = {
+      isUser: false,
+      content: {
+        text: "Here's our AI forecast for energy infrastructure needs:",
+        action: 'showGraphs',
+        graphs: [
+          {
+            data: [
+              { year: '2024-Q1', capacity: 850, smart: 880, baseline: 820 },
+              { year: '2024-Q2', capacity: 900, smart: 950, baseline: 850 },
+              { year: '2024-Q3', capacity: 950, smart: 1020, baseline: 880 },
+              { year: '2024-Q4', capacity: 1000, smart: 1100, baseline: 910 }
+            ]
+          }
+        ],
+        postText: "The blue lines show projected energy demand under different growth scenarios."
+      }
+    };
+    
+    setMessages(prev => [...prev, mockResponse]);
+    setIsLoading(false);
+    return;
   }
-
-  // ... (existing code)
+  
+  // Handle other actions
+  const response = await askClaude(action.prompt);
+  const parsedResponse = parseClaudeResponse(response);
+  setMessages(prev => [...prev, {
+    isUser: false,
+    content: parsedResponse
+  }]);
 }; 
