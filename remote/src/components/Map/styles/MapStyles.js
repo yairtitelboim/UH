@@ -1,11 +1,19 @@
 import styled, { keyframes } from 'styled-components';
 
 export const MapContainer = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    height: 100vh; // Fill entire viewport height
+    position: fixed; // Ensure it stays fixed
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
 
   .callout-annotation {
     cursor: default;
@@ -88,15 +96,17 @@ export const LayerToggleContainer = styled.div`
   position: absolute;
   top: 10px;
   right: 10px;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 10px;
-  border-radius: 4px;
-  z-index: 1;
-  transition: transform 0.3s ease;
-  transform: translateX(${props => props.$isCollapsed ? 'calc(100% + 10px)' : '0'});
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  z-index: 2;
+  
+  @media (max-width: 768px) {
+    top: auto;
+    bottom: 20px;
+    right: 10px;
+    max-width: 90%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
 `;
 
 export const LayerCollapseButton = styled.div`
@@ -128,7 +138,7 @@ export const LayerCollapseButton = styled.div`
 
 export const ToggleButton = styled.button`
   padding: 8px 12px;
-  background: ${props => props.active ? '#2196F3' : '#666'};
+  background: ${props => props.$active ? '#2196F3' : '#666'};
   color: white;
   border: none;
   border-radius: 4px;
@@ -138,7 +148,15 @@ export const ToggleButton = styled.button`
   transition: all 0.3s ease;
 
   &:hover {
-    background: ${props => props.active ? '#1976D2' : '#777'};
+    background: ${props => props.$active ? '#1976D2' : '#777'};
+  }
+
+  @media (max-width: 768px) {
+    padding: 8px;
+    font-size: 12px;
+    width: auto;
+    min-width: 80px;
+    height: 36px;
   }
 `;
 

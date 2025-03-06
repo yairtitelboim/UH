@@ -200,6 +200,22 @@ const Panel = styled.div`
   z-index: 1;
   transform: translateX(${props => props.$isCollapsed ? '-100%' : '0'});
   transition: transform 0.3s ease;
+  box-shadow: ${props => props.$isCollapsed ? 'none' : '0 0 20px rgba(0,0,0,0.5)'};
+
+  @media (max-width: 768px) {
+    position: fixed;
+    width: 100%;
+    height: 60vh;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: translateY(${props => props.$isCollapsed ? '100%' : '0'});
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    z-index: 1000;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 `;
 
 const ChatHeader = styled.div`
@@ -207,12 +223,46 @@ const ChatHeader = styled.div`
   font-size: 24px;
   font-weight: 500;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+  @media (max-width: 768px) {
+    padding: 12px;
+    font-size: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 `;
 
 const ChatMessages = styled.div`
   flex-grow: 1;
   overflow-y: auto;
   padding: 20px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* For smoother scrolling on iOS */
+
+  @media (max-width: 768px) {
+    padding: 12px;
+    max-height: calc(60vh - 138px); /* Adjust based on header and input area heights */
+  }
+
+  /* Custom scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
 `;
 
 const Message = styled.div`
@@ -250,6 +300,14 @@ const MessageContent = styled.div`
 const InputArea = styled.div`
   padding: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+
+  @media (max-width: 768px) {
+    padding: 16px;
+    position: sticky;
+    bottom: 0;
+    background: #1A1A1A;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2);
+  }
 `;
 
 const Input = styled.input`
@@ -262,6 +320,13 @@ const Input = styled.input`
   font-size: 16px;
   &::placeholder {
     color: rgba(255, 255, 255, 0.5);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 12px 16px;
+    border-radius: 24px;
+    font-size: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) inset;
   }
 `;
 
@@ -332,21 +397,40 @@ const CollapseIconContainer = styled.div`
   left: ${props => props.$isCollapsed ? '10px' : '35%'};
   top: 50%;
   transform: translateY(-50%);
-  z-index: 2;
+  z-index: 10;
   transition: left 0.3s ease;
+
+  @media (max-width: 768px) {
+    position: fixed;
+    left: 50%;
+    top: ${props => props.$isCollapsed ? 'auto' : 'calc(40vh - 28px)'}; /* Position above panel when open */
+    bottom: ${props => props.$isCollapsed ? '20px' : 'auto'};
+    transform: translateX(-50%) ${props => props.$isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)'};
+    z-index: 1001; /* Ensure it's above the panel */
+  }
 `;
 
 const CollapseIcon = styled.div`
-  width: 32px;
-  height: 32px;
-  background: rgba(0, 0, 0, 0.8);
+  width: 48px;
+  height: 48px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.15);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: white;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+
+  @media (max-width: 768px) {
+    width: 56px;
+    height: 56px;
+    background: #1A1A1A;
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
 
   svg {
     width: 24px;
@@ -356,7 +440,8 @@ const CollapseIcon = styled.div`
   }
 
   &:hover {
-    background: rgba(0, 0, 0, 0.9);
+    background: ${props => props.$isCollapsed ? 'rgba(0, 0, 0, 0.95)' : '#2A2A2A'};
+    border-color: rgba(255, 255, 255, 0.3);
   }
 `;
 
@@ -400,6 +485,18 @@ const VisualizationCard = styled.div`
   padding: 16px;
   margin: 16px 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden; /* Prevent content overflow */
+  
+  @media (max-width: 768px) {
+    padding: 12px;
+    margin: 12px 0;
+    width: 100%;
+    border-radius: 8px;
+    /* Improve touch scrolling for content inside visualization cards */
+    > div {
+      -webkit-overflow-scrolling: touch;
+    }
+  }
 `;
 
 const CardHeader = styled.div`
@@ -473,6 +570,11 @@ const ChartContainer = styled.div`
   height: 200px;
   width: 100%;
   margin: 16px 0;
+
+  @media (max-width: 768px) {
+    height: 160px;
+    margin: 12px 0;
+  }
 `;
 
 const ChartLegend = styled.div`
@@ -506,11 +608,37 @@ const InsightText = styled.p`
   margin: 8px 0 0 0;
 `;
 
-const AIChatPanel = ({ messages, setMessages, handleQuestion, map }) => {
+const AIChatPanel = ({ messages, setMessages, handleQuestion, map, initialCollapsed = true }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const messagesEndRef = useRef(null);
+  const panelInitializedRef = useRef(false);
+
+  // Add toggle handler with enhanced debug logging
+  const handleCollapseToggle = () => {
+    console.log('🔍 Panel collapse clicked');
+    console.log('Current collapse state:', isCollapsed);
+    console.log('Window width:', window.innerWidth);
+    console.log('Is mobile?:', window.innerWidth <= 768);
+    
+    const newState = !isCollapsed;
+    console.log('Setting new collapse state to:', newState);
+    
+    setIsCollapsed(newState);
+    
+    // Log after state update
+    setTimeout(() => {
+      console.log('Updated collapse state:', newState);
+      console.log('Panel transform should be:', newState ? '100%' : '0');
+    }, 0);
+  };
+
+  // Add effect to log panel state changes
+  useEffect(() => {
+    console.log('Panel collapse state changed to:', isCollapsed);
+    console.log('Panel should be:', isCollapsed ? 'hidden' : 'visible');
+  }, [isCollapsed]);
 
   // Auto-scroll effect
   useEffect(() => {
@@ -519,17 +647,48 @@ const AIChatPanel = ({ messages, setMessages, handleQuestion, map }) => {
 
   // Handle panel collapse
   useEffect(() => {
-    handlePanelCollapse(isCollapsed, map);
+    if (map && map.current) {
+      console.log('Applying panel collapse state:', isCollapsed);
+      handlePanelCollapse(isCollapsed, map);
+    }
   }, [isCollapsed, map]);
 
-  // Initial collapse effect
+  // Special effect for initial load - runs only once on component mount
   useEffect(() => {
-    handlePanelCollapse(true, map);
+    if (!panelInitializedRef.current) {
+      console.log('Forcing initial panel collapse');
+      setIsCollapsed(true);
+      
+      // Try multiple times to ensure it stays collapsed during initialization
+      const applyCollapse = () => {
+        if (map && map.current) {
+          handlePanelCollapse(true, map);
+        }
+      };
+      
+      // Apply immediately
+      applyCollapse();
+      
+      // And also after short delays to ensure it applies after any other initialization
+      const timers = [
+        setTimeout(applyCollapse, 100),
+        setTimeout(applyCollapse, 500),
+        setTimeout(applyCollapse, 1000)
+      ];
+      
+      panelInitializedRef.current = true;
+      
+      return () => timers.forEach(timer => clearTimeout(timer));
+    }
   }, [map]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (inputValue.trim()) {
+      // When user submits a question, open the panel if it's closed
+      if (isCollapsed) {
+        setIsCollapsed(false);
+      }
       await handlePanelQuestion(inputValue.trim(), map, setMessages, setIsLoading);
       setInputValue('');
     }
@@ -537,7 +696,10 @@ const AIChatPanel = ({ messages, setMessages, handleQuestion, map }) => {
 
   return (
     <>
-      <Panel $isCollapsed={isCollapsed}>
+      <Panel 
+        $isCollapsed={isCollapsed}
+        style={{ willChange: 'transform' }}
+      >
         <ChatHeader>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div>
@@ -1056,9 +1218,12 @@ const AIChatPanel = ({ messages, setMessages, handleQuestion, map }) => {
         </InputArea>
       </Panel>
 
-      <CollapseIconContainer $isCollapsed={isCollapsed}>
+      <CollapseIconContainer 
+        $isCollapsed={isCollapsed}
+        style={{ willChange: 'transform' }}
+      >
         <CollapseIcon 
-          onClick={() => setIsCollapsed(!isCollapsed)} 
+          onClick={handleCollapseToggle}
           title={isCollapsed ? "Expand panel" : "Collapse panel"}
           $isCollapsed={isCollapsed}
         >

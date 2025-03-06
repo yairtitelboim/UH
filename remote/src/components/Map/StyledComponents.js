@@ -199,4 +199,75 @@ export const AnimatedDiv = styled.div`
   animation: ${fadeIn} 0.5s ease forwards;
   animation-delay: ${props => props.$delay}s;
   opacity: 0;
+`;
+
+export const Toggle3DButton = styled.button`
+  position: absolute;
+  bottom: 80px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+
+  &:active {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(0.95);
+  }
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+
+  ${props => props.$active && `
+    background: #0088cc;
+    border-color: #0088cc;
+  `}
+
+  @media (min-width: 768px) {
+    display: none;
+  }
+`;
+
+export const RotateButton = styled.button`
+  position: absolute;
+  bottom: 140px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  font-size: 18px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+
+  &:active {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(0.95);
+  }
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+
+  @media (min-width: 768px) {
+    display: none;
+  }
 `; 

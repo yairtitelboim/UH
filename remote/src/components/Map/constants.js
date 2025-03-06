@@ -191,10 +191,28 @@ export const BUILDING_COLORS = {
 // Map configuration constants
 export const MAP_CONFIG = {
     style: 'mapbox://styles/mapbox/dark-v11',
-    center: [-95.5577, 29.7837],  // Houston Energy Corridor coordinates
-    zoom: 8,
-    minZoom: 8.5,
-    maxZoom: 17
+    center: [-95.5577, 29.7837],
+    zoom: 7.5,
+    minZoom: 6.5,
+    maxZoom: 17,
+    pitch: 0, // Start with flat view
+    dragRotate: true, // Allow rotation on desktop
+    touchZoomRotate: true,
+    doubleClickZoom: true,
+    touchPitch: false, // Disable pitch via touch gesture, we'll use our button instead
+    pitchWithRotate: false // Disable pitch with rotate gesture
+};
+
+// Add mobile-specific constants
+export const MOBILE_CONFIG = {
+    breakpoint: 768,
+    panelHeight: '50vh',
+    buttonSize: '36px',
+    fontSize: {
+        small: '12px',
+        medium: '14px',
+        large: '16px'
+    }
 };
 
 // Power infrastructure locations for Houston

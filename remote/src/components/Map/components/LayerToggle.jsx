@@ -45,7 +45,7 @@ const LayerCollapseButton = styled.div`
 
 const ToggleButton = styled.button`
   padding: 8px 12px;
-  background: ${props => props.active ? '#2196F3' : '#666'};
+  background: ${props => props.$active ? '#2196F3' : '#666'};
   color: white;
   border: none;
   border-radius: 4px;
@@ -55,7 +55,7 @@ const ToggleButton = styled.button`
   transition: all 0.3s ease;
 
   &:hover {
-    background: ${props => props.active ? '#1976D2' : '#777'};
+    background: ${props => props.$active ? '#1976D2' : '#777'};
   }
 `;
 
@@ -154,7 +154,7 @@ const LayerToggle = ({
       </LayerCollapseButton>
 
       <ToggleButton 
-        active={isErcotMode}
+        $active={isErcotMode}
         onClick={isErcotMode ? clearErcotMode : fetchErcotData}
         style={{ height: '32px', padding: '0 12px', fontSize: '14px', marginBottom: '8px' }}
       >
@@ -162,7 +162,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showRoadGrid}
+        $active={showRoadGrid}
         onClick={() => setShowRoadGrid(!showRoadGrid)}
         style={{ height: '32px', padding: '0 12px', fontSize: '14px' }}
       >
@@ -170,7 +170,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showMUDLayer}
+        $active={showMUDLayer}
         onClick={() => {
           setShowMUDLayer(!showMUDLayer);
           map.current.setLayoutProperty(
@@ -185,7 +185,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showHarveyData}
+        $active={showHarveyData}
         onClick={() => {
           console.log('Harvey data button clicked, current state:', showHarveyData);
           setShowHarveyData(!showHarveyData);
@@ -206,7 +206,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showSurfaceWater}
+        $active={showSurfaceWater}
         onClick={() => {
           setShowSurfaceWater(!showSurfaceWater);
           // List of water-related layers (excluding wastewater outfalls)
@@ -233,7 +233,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showWastewaterOutfalls}
+        $active={showWastewaterOutfalls}
         onClick={() => {
           setShowWastewaterOutfalls(!showWastewaterOutfalls);
           map.current.setLayoutProperty(
@@ -248,7 +248,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showZipCodes}
+        $active={showZipCodes}
         onClick={() => {
           setShowZipCodes(!showZipCodes);
           map.current.setLayoutProperty(
@@ -263,7 +263,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showZipFloodAnalysis}
+        $active={showZipFloodAnalysis}
         onClick={async () => {
           setShowZipFloodAnalysis(!showZipFloodAnalysis);
           map.current.setLayoutProperty(
@@ -285,7 +285,7 @@ const LayerToggle = ({
       </ToggleButton>
 
       <ToggleButton 
-        active={showAIConsensus}
+        $active={showAIConsensus}
         onClick={() => {
           setShowAIConsensus(!showAIConsensus);
           map.current.setLayoutProperty(

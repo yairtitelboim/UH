@@ -765,8 +765,23 @@ export const initializeRoadParticles = (map) => {
     }
 };
 
+// Add throttle utility to limit animation updates
+const throttle = (func, limit) => {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    }
+};
+
 export const animateRoadParticles = ({ map }) => {
     try {
+        if (!map) return null;
+
+        // Cache road layers if not already cached
         if (!window.roadLayers) {
             const layers = map.getStyle().layers;
             window.roadLayers = layers
@@ -855,6 +870,7 @@ export const stopRoadParticles = (map) => {
         if (map.getSource('road-particles')) {
             map.removeSource('road-particles');
         }
+        window.roadLayers = null; // Clear cached road layers
     } catch (error) {
         console.error('Error stopping road particles:', error);
     }
@@ -866,10 +882,33 @@ export const initializePanelAnimations = (map) => {
 };
 
 export const handlePanelCollapse = (isCollapsed, map) => {
-  // Adjust map padding when panel collapses/expands
-  if (map.current) {
-    map.current.easeTo({
-      padding: { left: isCollapsed ? 0 : window.innerWidth * 0.35 },
+  if (!map) return;
+  
+  // Handle if map is a ref object
+  const mapInstance = map.current ? map.current : map;
+  
+  if (!mapInstance || !mapInstance.easeTo) {
+    console.warn('Invalid map instance in handlePanelCollapse');
+    return;
+  }
+
+  // On mobile, don't adjust the map
+  if (window.innerWidth <= 768) {
+    return;
+  }
+  
+  // Adjust map view on desktop only
+  if (isCollapsed) {
+    // Panel is collapsed, expand map
+    mapInstance.easeTo({
+      padding: { left: 0 },
+      duration: 300
+    });
+  } else {
+    // Panel is expanded, shrink map
+    const panelWidth = window.innerWidth * 0.35; // 35% of window width
+    mapInstance.easeTo({
+      padding: { left: panelWidth },
       duration: 300
     });
   }

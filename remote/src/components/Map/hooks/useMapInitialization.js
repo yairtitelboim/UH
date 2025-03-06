@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { MAP_CONFIG } from '../constants';
 import { formatWaterData, formatAIConsensusData } from '../components/PopupCards';
 import { mockDisagreementData } from '../constants/mockData';
+import { handlePanelCollapse } from '../hooks/mapAnimations';  // Import the handlePanelCollapse function
 
 export const useMapInitialization = (map, mapContainer) => {
   useEffect(() => {
@@ -12,10 +13,22 @@ export const useMapInitialization = (map, mapContainer) => {
       container: mapContainer.current,
       style: MAP_CONFIG.style,
       center: MAP_CONFIG.center,
-      zoom: 1,
+      zoom: MAP_CONFIG.zoom,
       minZoom: MAP_CONFIG.minZoom,
       maxZoom: MAP_CONFIG.maxZoom,
+      dragRotate: MAP_CONFIG.dragRotate,
+      touchZoomRotate: MAP_CONFIG.touchZoomRotate,
+      doubleClickZoom: MAP_CONFIG.doubleClickZoom,
+      touchPitch: MAP_CONFIG.touchPitch,
       pitch: 0
+    });
+    
+    // Force panel to be collapsed on initial map load
+    map.current.once('load', () => {
+      // Ensure chat panel is initially collapsed
+      setTimeout(() => {
+        handlePanelCollapse(true, map.current);
+      }, 100);
     });
 
     // Add water styling when the style loads

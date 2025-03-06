@@ -5,19 +5,25 @@ import { MAP_CONFIG } from './constants';
 import { buildingLayers } from './constants/layerConfigs';
 import { askClaude, parseClaudeResponse, LOADING_STEPS } from '../../services/claude';
 import { MapContainer, LayerToggleContainer, LayerCollapseButton, ToggleButton } from './styles/MapStyles';
+import { Toggle3DButton, RotateButton } from './StyledComponents';
 import AIChatPanel from './AIChatPanel';
 import { useAIConsensusAnimation } from './hooks/useAIConsensusAnimation';
 import { useMapInitialization } from './hooks/useMapInitialization';
 import { PopupManager } from './components/PopupManager';
 import { 
     highlightPOIBuildings,
-    initializeRoadGrid
+    initializeRoadGrid,
+    loadHarveyData
 } from './utils';
 import { createErcotPopup } from './intel';
 import LayerToggle from './components/LayerToggle';
-import { loadHarveyData } from './utils';
 import { mockDisagreementData } from './constants/mockData';
 import { ErcotManager } from './components/ErcotManager';
+import { 
+    initializeRoadParticles,
+    animateRoadParticles,
+    stopRoadParticles
+} from './hooks/mapAnimations';
 
 // Set mapbox access token
 mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
@@ -40,6 +46,10 @@ const MapComponent = () => {
   const [showZipFloodAnalysis, setShowZipFloodAnalysis] = useState(false);
   const [isLayerMenuCollapsed, setIsLayerMenuCollapsed] = useState(false);
   const [showAIConsensus, setShowAIConsensus] = useState(false);
+  const [showRoadParticles, setShowRoadParticles] = useState(true);
+  const [is3DActive, setIs3DActive] = useState(false);
+  const [currentRotation, setCurrentRotation] = useState(0);
+  const roadParticleAnimation = useRef(null);
 
   // Add these refs for drag functionality
   const isDraggingRef = useRef(false);
@@ -70,6 +80,60 @@ const MapComponent = () => {
       }
     }
   }, [showRoadGrid]);
+
+  // Add this effect for road particles
+  useEffect(() => {
+    if (!map.current) return;
+
+    const initializeParticles = async () => {
+      try {
+        // Wait for style to fully load
+        if (!map.current.isStyleLoaded()) {
+          await new Promise(resolve => {
+            map.current.once('style.load', resolve);
+          });
+        }
+
+        if (showRoadParticles) {
+          console.log('Starting road particles animation...');
+          initializeRoadParticles(map.current);
+          roadParticleAnimation.current = animateRoadParticles({ map: map.current });
+        } else {
+          if (roadParticleAnimation.current) {
+            stopRoadParticles(map.current);
+            cancelAnimationFrame(roadParticleAnimation.current);
+            roadParticleAnimation.current = null;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to initialize road particles:', error);
+      }
+    };
+
+    // Initialize when map is ready
+    if (map.current.loaded()) {
+      initializeParticles();
+    } else {
+      map.current.once('load', initializeParticles);
+    }
+
+    return () => {
+      if (roadParticleAnimation.current) {
+        cancelAnimationFrame(roadParticleAnimation.current);
+        roadParticleAnimation.current = null;
+      }
+    };
+  }, [showRoadParticles]);
+
+  // Add cleanup effect
+  useEffect(() => {
+    return () => {
+      if (roadParticleAnimation.current) {
+        cancelAnimationFrame(roadParticleAnimation.current);
+        roadParticleAnimation.current = null;
+      }
+    };
+  }, []);
 
   const handleQuestion = async (question) => {
     setIsLoading(true);
@@ -113,26 +177,11 @@ const MapComponent = () => {
   useEffect(() => {
     if (map.current) return;
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: MAP_CONFIG.style,
-      center: MAP_CONFIG.center,
-      zoom: 1,
-      minZoom: MAP_CONFIG.minZoom,
-      maxZoom: MAP_CONFIG.maxZoom,
-      pitch: 0
-    });
-
-    // Add water styling when the style loads
-    map.current.on('style.load', async () => {
-      // Wait for style to be fully loaded
-      await new Promise(resolve => {
-        if (map.current.isStyleLoaded()) {
-          resolve();
-        } else {
-          map.current.once('styledata', resolve);
-        }
-      });
+    // Remove duplicate initialization since it's handled in useMapInitialization
+    const handleMapLoad = async () => {
+      if (!map.current.isStyleLoaded()) {
+        await new Promise(resolve => map.current.once('style.load', resolve));
+      }
 
       // Style water in the base map layers
       const waterLayers = [
@@ -196,192 +245,13 @@ const MapComponent = () => {
           console.warn(`Could not style park layer ${layerId}:`, error);
         }
       });
-    });
-
-    const initializeMapLayers = async () => {
-      try {
-        if (!map.current.isStyleLoaded()) {
-          await new Promise(resolve => map.current.once('style.load', resolve));
-        }
-
-        // Load census blocks
-        const censusResponse = await fetch('/houston-census-blocks.geojson');
-        const censusData = await censusResponse.json();
-        
-        map.current.addSource('census-blocks', {
-          type: 'geojson',
-          data: censusData
-        });
-
-        // Add census blocks layer - initially hidden
-        map.current.addLayer({
-          'id': 'census-blocks',
-          'type': 'fill',
-          'source': 'census-blocks',
-          'paint': {
-            'fill-color': '#FF0000',
-            'fill-opacity': 0.4,
-            'fill-outline-color': '#000000'
-          },
-          'layout': {
-            'visibility': 'none'  // Start with layer hidden
-          }
-        });
-
-        // Load our custom OSM building data
-        const buildingsResponse = await fetch('/houston_buildings.geojson');
-        const buildingsData = await buildingsResponse.json();
-        
-        map.current.addSource('custom-buildings', {
-          type: 'geojson',
-          data: buildingsData
-        });
-
-        // Add OSM buildings layer
-        map.current.addLayer(buildingLayers.osmBuildings);
-
-        // Add Mapbox 3D buildings layer
-        map.current.addLayer(buildingLayers.mapboxBuildings);
-
-        // Add click handler
-        map.current.on('click', 'census-blocks', (e) => {
-          if (!e.features?.length) return;
-          
-          const feature = e.features[0];
-          const clickedId = feature.properties.OBJECTID;
-          
-          // Update opacity for all blocks - clicked one stays full opacity, others dim
-          map.current.setPaintProperty('census-blocks', 'fill-opacity', [
-            'case',
-            ['==', ['get', 'OBJECTID'], clickedId],
-            0.7,  // Keep full opacity for clicked block
-            0.3   // Dim other blocks
-          ]);
-
-          // Always show popup when we have ERCOT data
-          if (feature.properties.price !== undefined && feature.properties.mw !== undefined) {
-            // Remove existing popups
-            const existingPopups = document.getElementsByClassName('mapboxgl-popup');
-            Array.from(existingPopups).forEach(popup => popup.remove());
-
-            // Create and add the popup
-            createErcotPopup(feature, e.lngLat).addTo(map.current);
-          }
-        });
-
-        // Add MUD layer source and layer
-        map.current.addSource('mud-districts', {
-          type: 'geojson',
-          data: '/MUD.geojson'
-        });
-
-        map.current.addLayer({
-          'id': 'mud-districts',
-          'type': 'fill',
-          'source': 'mud-districts',
-          'paint': {
-            'fill-color': '#0080ff',
-            'fill-opacity': 0.9,
-            'fill-outline-color': '#0066cc'
-          },
-          'layout': {
-            'visibility': 'none'  // Start hidden
-          }
-        });
-
-        // Add Surface Water layers
-        const [
-          surfaceWaterResponse,
-          surfaceWaterIntakeResponse,
-          smallTribalAreasResponse,
-          smallAreasResponse,
-          pwsReservoirResponse,
-          waterwellGridResponse,
-          wastewaterOutfallsResponse,
-          zipCodesResponse
-        ] = await Promise.all([
-          fetch('/Surface_Water.geojson'),
-          fetch('/Surface_Water_Intake.geojson'),
-          fetch('/small_tribal_areas.geojson'),
-          fetch('/small_areas.geojson'),
-          fetch('/PWS_Reservoir.geojson'),
-          fetch('/Waterwell_Grid.geojson'),
-          fetch('/Wastewater_Outfalls.geojson'),
-          fetch('/COH_ZIPCODES.geojson')
-        ]);
-        
-        const [
-          surfaceWaterData,
-          surfaceWaterIntakeData,
-          smallTribalAreasData,
-          smallAreasData,
-          pwsReservoirData,
-          waterwellGridData,
-          wastewaterOutfallsData,
-          zipCodesData
-        ] = await Promise.all([
-          surfaceWaterResponse.json(),
-          surfaceWaterIntakeResponse.json(),
-          smallTribalAreasResponse.json(),
-          smallAreasResponse.json(),
-          pwsReservoirResponse.json(),
-          waterwellGridResponse.json(),
-          wastewaterOutfallsResponse.json(),
-          zipCodesResponse.json()
-        ]);
-        
-        // Add all sources
-        const sources = {
-          'surface-water': surfaceWaterData,
-          'surface-water-intake': surfaceWaterIntakeData,
-          'small-tribal-areas': smallTribalAreasData,
-          'small-areas': smallAreasData,
-          'pws-reservoir': pwsReservoirData,
-          'waterwell-grid': waterwellGridData,
-          'wastewater-outfalls': wastewaterOutfallsData,
-          'zipcodes': zipCodesData
-        };
-
-        Object.entries(sources).forEach(([id, data]) => {
-          map.current.addSource(id, {
-            type: 'geojson',
-            data: data
-          });
-        });
-
-        // Update source data with mock AI disagreement values
-        const zipSource = map.current.getSource('zipcodes');
-        const zipData = zipSource._data;
-        const updatedFeatures = zipData.features.map(feature => {
-          const zipCode = feature.properties.Zip_Code;
-          const modelData = mockDisagreementData[zipCode];
-          return {
-            ...feature,
-            properties: {
-              ...feature.properties,
-              ai_disagreement: modelData?.disagreement || 0,
-              model_data: modelData
-            }
-          };
-        });
-
-        zipSource.setData({
-          type: 'FeatureCollection',
-          features: updatedFeatures
-        });
-
-        map.current.setPaintProperty('zipcode-flood-analysis', 'fill-opacity', [
-          'case',
-          ['has', 'flood_height'],
-          0.5,  // Changed from 0.7 to 0.5 for ZIP codes with flood data
-          0.1   // Keep 0.1 for ZIP codes without measurements
-        ]);
-      } catch (error) {
-        console.error('Error initializing map:', error);
-      }
     };
 
-    map.current.on('load', initializeMapLayers);
+    if (map.current) {
+      handleMapLoad();
+    } else {
+      map.current.once('load', handleMapLoad);
+    }
   }, [isErcotMode]);
 
   // Add cleanup effect for AI consensus animation
@@ -494,6 +364,68 @@ const MapComponent = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!map.current) return;
+
+    // Add touch event handlers
+    const handleTouchStart = (e) => {
+      if (!e || !e.touches) return;
+      
+      if (e.touches.length === 2) {
+        e.preventDefault(); // Prevent default zoom behavior
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (!e || !e.touches) return;
+      
+      if (e.touches.length === 2) {
+        e.preventDefault();
+      }
+    };
+
+    // Add the event listeners to the canvas container
+    const mapCanvas = map.current.getCanvas();
+    if (mapCanvas) {
+      mapCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      mapCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+      return () => {
+        mapCanvas.removeEventListener('touchstart', handleTouchStart);
+        mapCanvas.removeEventListener('touchmove', handleTouchMove);
+      };
+    }
+  }, []);
+
+  // Add the toggle3D function
+  const toggle3D = () => {
+    if (!map.current) return;
+    
+    const newPitch = is3DActive ? 0 : 60;
+    
+    map.current.easeTo({
+      pitch: newPitch,
+      duration: 1000
+    });
+    
+    setIs3DActive(!is3DActive);
+  };
+  
+  // Add the rotate function
+  const rotateMap = () => {
+    if (!map.current) return;
+    
+    // Increment rotation by 90 degrees (π/2 radians)
+    const newRotation = (currentRotation + 90) % 360;
+    
+    map.current.easeTo({
+      bearing: newRotation,
+      duration: 1000
+    });
+    
+    setCurrentRotation(newRotation);
+  };
+
   return (
     <MapContainer>
       <div ref={mapContainer} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
@@ -526,6 +458,31 @@ const MapComponent = () => {
         loadHarveyData={loadHarveyData}
       />
 
+        <ToggleButton 
+          $active={showRoadParticles}
+          onClick={() => setShowRoadParticles(!showRoadParticles)}
+          style={{ height: '32px', padding: '0 12px', fontSize: '14px', marginBottom: '8px' }}
+        >
+          {showRoadParticles ? 'Hide Flow' : 'Show Flow'}
+        </ToggleButton>
+
+        {/* 3D Mode Toggle Button */}
+        <Toggle3DButton 
+          $active={is3DActive}
+          onClick={toggle3D}
+          aria-label="Toggle 3D view"
+        >
+          {is3DActive ? '2D' : '3D'}
+        </Toggle3DButton>
+        
+        {/* Rotation Button */}
+        <RotateButton 
+          onClick={rotateMap}
+          aria-label="Rotate map"
+        >
+          ↻
+        </RotateButton>
+
       <AIChatPanel 
         messages={messages}
         setMessages={setMessages}
@@ -545,7 +502,8 @@ const MapComponent = () => {
             return null;
           }
         }}
-        map={map}
+        map={map.current}
+        initialCollapsed={true}
       />
     </MapContainer>
   );
