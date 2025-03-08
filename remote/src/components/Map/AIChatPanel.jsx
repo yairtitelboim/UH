@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { handlePanelQuestion, handleQuickAction } from '../../services/claude';
+import { handlePanelQuestion, handleQuickAction, MOCK_RESPONSES } from '../../services/claude';
 import { initializePanelAnimations, handlePanelCollapse } from './hooks/mapAnimations';
 import { 
   AlertTriangle, 
@@ -694,6 +694,51 @@ const AIChatPanel = ({ messages, setMessages, handleQuestion, map, initialCollap
     }
   };
 
+  // Add a safe question handler for predefined questions
+  const handlePredefinedQuestion = async (questionText) => {
+    console.log('Handling predefined question:', questionText);
+    
+    // When user clicks a question, open the panel if it's closed
+    if (isCollapsed) {
+      setIsCollapsed(false);
+    }
+    
+    try {
+      // Check if map or map.current exists, otherwise use mock data
+      const mapRef = map && (map.current || map);
+      if (!mapRef) {
+        console.log('Map reference not available, using mock data');
+      }
+      
+      // For hardcoded questions like "Where are the major flood-prone areas?", 
+      // we can directly use the mock response if available
+      if (questionText === "Where are the major flood-prone areas?" && 
+          MOCK_RESPONSES && MOCK_RESPONSES[questionText]) {
+        setMessages(prev => [
+          ...prev,
+          { isUser: true, content: questionText },
+          { isUser: false, content: JSON.parse(MOCK_RESPONSES[questionText].content[0].text) }
+        ]);
+        return;
+      }
+      
+      await handlePanelQuestion(questionText, mapRef, setMessages, setIsLoading);
+    } catch (error) {
+      console.error('Error handling predefined question:', error);
+      setMessages(prev => [
+        ...prev, 
+        { isUser: true, content: questionText },
+        { 
+          isUser: false, 
+          content: { 
+            preGraphText: "Sorry, I encountered an error processing your request.", 
+            postGraphText: "Please try again or select another question." 
+          } 
+        }
+      ]);
+    }
+  };
+
   return (
     <>
       <Panel 
@@ -730,25 +775,25 @@ const AIChatPanel = ({ messages, setMessages, handleQuestion, map, initialCollap
               </InitialPrompt>
 
               <AnimatedDiv $delay={0.2}>
-                <QuestionButton onClick={() => handlePanelQuestion("Show me the areas most impacted by Hurricane Harvey", map, setMessages, setIsLoading)}>
+                <QuestionButton onClick={() => handlePredefinedQuestion("Show me the areas most impacted by Hurricane Harvey")}>
                   Show me areas most impacted by Hurricane Harvey
                 </QuestionButton>
               </AnimatedDiv>
 
               <AnimatedDiv $delay={0.4}>
-                <QuestionButton onClick={() => handlePanelQuestion("Where are the major flood-prone areas?", map, setMessages, setIsLoading)}>
+                <QuestionButton onClick={() => handlePredefinedQuestion("Where are the major flood-prone areas?")}>
                   Where are the major flood-prone areas?
                 </QuestionButton>
               </AnimatedDiv>
 
               <AnimatedDiv $delay={0.6}>
-                <QuestionButton onClick={() => handlePanelQuestion("Analyze flood risks by ZIP code", map, setMessages, setIsLoading)}>
+                <QuestionButton onClick={() => handlePredefinedQuestion("Analyze flood risks by ZIP code")}>
                   Analyze flood risks by ZIP code
                 </QuestionButton>
               </AnimatedDiv>
 
               <AnimatedDiv $delay={0.8}>
-                <SeeMoreButton onClick={() => handlePanelQuestion("Show me more flood analysis options", map, setMessages, setIsLoading)}>
+                <SeeMoreButton onClick={() => handlePredefinedQuestion("Show me more flood analysis options")}>
                   See more
                 </SeeMoreButton>
               </AnimatedDiv>

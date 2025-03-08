@@ -99,8 +99,8 @@ const LayerToggle = ({
       }
       
       // Then reset the census blocks
-      map.current.setPaintProperty('census-blocks', 'fill-color', '#FF0000');
-      map.current.setPaintProperty('census-blocks', 'fill-opacity', 0.4);
+      map.current.setPaintProperty('census-blocks', 'fill-color', '#FF5500');
+      map.current.setPaintProperty('census-blocks', 'fill-opacity', 0.6);
       
       // Reset road grid state
       setShowRoadGrid(false);
@@ -156,7 +156,13 @@ const LayerToggle = ({
       <ToggleButton 
         $active={isErcotMode}
         onClick={isErcotMode ? clearErcotMode : fetchErcotData}
-        style={{ height: '32px', padding: '0 12px', fontSize: '14px', marginBottom: '8px' }}
+        style={{ 
+          height: '32px', 
+          padding: '0 12px', 
+          fontSize: '14px', 
+          marginBottom: '8px',
+          backgroundColor: isErcotMode ? '#0288D1' : '#666'
+        }}
       >
         {isErcotMode ? 'Disable ERCOT' : 'Enable ERCOT'}
       </ToggleButton>

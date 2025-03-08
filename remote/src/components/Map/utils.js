@@ -861,3 +861,41 @@ export const createWaterwayBuffer = async (map) => {
     console.error('Error creating waterway buffer:', error);
   }
 };
+
+// Update any ERCOT-related color constants
+export const ERCOT_COLORS = {
+  LOW: '#FF8C00', // Dark Orange
+  MEDIUM: '#FF5500', // Bright Orange
+  HIGH: '#FF2800', // Orange-Red
+  CRITICAL: '#FF0000', // Bright Red
+  DEFAULT: '#FFB266', // Light Orange
+  OUTLINE: '#BB0000', // Dark Red
+  HIGHLIGHT: '#FFAC40' // Highlight Orange
+};
+
+// Update any functions that might set colors for ERCOT layers
+export const loadErcotData = async (map) => {
+  try {
+    //... existing code for loading data ...
+    
+    // If there's any code that sets colors for ERCOT data, update the color values
+    if (map.getLayer('ercot-layer')) {
+      map.setPaintProperty('ercot-layer', 'fill-color', [
+        'interpolate',
+        ['linear'],
+        ['get', 'price'],
+        25, ERCOT_COLORS.LOW,
+        50, ERCOT_COLORS.MEDIUM,
+        75, ERCOT_COLORS.HIGH,
+        100, ERCOT_COLORS.CRITICAL
+      ]);
+      
+      map.setPaintProperty('ercot-layer', 'fill-outline-color', ERCOT_COLORS.OUTLINE);
+      map.setPaintProperty('ercot-layer', 'fill-opacity', 0.7);
+    }
+    
+    // ... rest of existing function ...
+  } catch (error) {
+    console.error('Error loading ERCOT data:', error);
+  }
+};

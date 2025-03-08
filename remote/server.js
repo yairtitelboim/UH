@@ -114,7 +114,9 @@ app.get('/api/ercot-data', async (req, res) => {
       data.data = data.data.map(point => ({
         ...point,
         price: Math.max(20, Math.min(1000, point.price)),
-        mw: Math.max(0, point.mw)
+        mw: Math.max(0, point.mw),
+        // Add color values based on the new orange-red scheme
+        color: getErcotColor(Math.max(20, Math.min(1000, point.price)))
       }));
 
       console.log('Server: Processed ERCOT data:', {
@@ -141,6 +143,19 @@ app.get('/api/ercot-data', async (req, res) => {
     }
   });
 });
+
+// Helper function to generate colors based on price
+function getErcotColor(price) {
+  // Orange to red color scheme
+  if (price <= 25) return '#FF8C00'; // Dark Orange
+  if (price <= 35) return '#FF7800'; 
+  if (price <= 45) return '#FF6400';
+  if (price <= 55) return '#FF5000';
+  if (price <= 65) return '#FF3C00';
+  if (price <= 75) return '#FF2800';
+  if (price <= 85) return '#FF1400';
+  return '#FF0000'; // Bright Red for highest values
+}
 
 const PORT = 3001;
 app.listen(PORT, () => {
