@@ -34,16 +34,20 @@ git clone https://github.com/yairtitelboim/UH.git
 
 ### Important Note About GeoJSON Files
 
-**The large GeoJSON data files are not included in this repository** due to file size constraints. These files need to be obtained separately and placed in the `remote/public/` directory. The required GeoJSON files include:
-
-- `houston_buildings.geojson` (~276 MB)
-- `Pipelines.geojson` (~417 MB)
-- `Segments_-_Line.geojson` (~91 MB)
-- `Subdivision_Boundary.geojson` (~67 MB)
-- `Surface_Water.geojson` (~52 MB)
-- And other smaller GeoJSON files
+**The large GeoJSON data files are not included in this repository** due to file size constraints. These files need to be obtained separately and placed in the `remote/public/` directory.
 
 #### Downloading the GeoJSON Files
+
+The GeoJSON files have been bundled into zip files based on size:
+
+1. **Complete Dataset** (~191 MB compressed, contains all files)
+2. **Large Files Only** (~129 MB compressed, contains buildings and pipelines)
+3. **Medium Files** (~87 MB compressed, contains segments, boundaries, etc.)
+4. **Small Files** (~11 MB compressed, contains points of interest, census blocks)
+
+There are two ways to obtain and install these files:
+
+##### Option 1: Using the Download Script
 
 A download script is provided to help you obtain these files. After cloning the repository:
 
@@ -57,9 +61,27 @@ chmod +x download_data.sh
 ./download_data.sh
 ```
 
-3. When prompted, enter the URL where the GeoJSON files are hosted.
+3. Follow the prompts to:
+   - Enter the URL where the GeoJSON zip bundles are hosted
+   - Select which bundle(s) to download (complete set or specific size categories)
 
-If you don't have access to the file hosting URL, contact the repository owner to obtain these data files, or use alternative data sources for Houston.
+The script will download the selected bundles and extract them to the correct location.
+
+##### Option 2: Manual Download and Installation
+
+If you have direct access to the data bundles:
+
+1. Download the appropriate zip bundle(s) from where they are hosted
+2. Create the public directory if it doesn't exist:
+```bash
+mkdir -p remote/public
+```
+3. Extract the zip file(s) to the public directory:
+```bash
+unzip path/to/houston_all_geojson.zip -d remote/public/
+```
+
+If you don't have access to the file hosting URL or the data bundles, contact the repository owner to obtain these data files, or use alternative data sources for Houston.
 
 ### Prerequisites
 - Node.js (v14 or newer)

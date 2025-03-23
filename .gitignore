@@ -71,3 +71,6 @@ benchmark_output.json
 **/*copy*.jsx
 **/*copy*.js
 **/OLD/
+
+# Data bundles (exclude zip files)
+data_bundles/*.zip
