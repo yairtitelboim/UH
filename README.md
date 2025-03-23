@@ -20,6 +20,47 @@ This project includes several guides to help you understand and extend the codeb
 
 ## Getting Started
 
+### Cloning the Repository
+
+Clone this repository using SSH:
+```bash
+git clone git@github.com:yairtitelboim/UH.git
+```
+
+Or using HTTPS:
+```bash
+git clone https://github.com/yairtitelboim/UH.git
+```
+
+### Important Note About GeoJSON Files
+
+**The large GeoJSON data files are not included in this repository** due to file size constraints. These files need to be obtained separately and placed in the `remote/public/` directory. The required GeoJSON files include:
+
+- `houston_buildings.geojson` (~276 MB)
+- `Pipelines.geojson` (~417 MB)
+- `Segments_-_Line.geojson` (~91 MB)
+- `Subdivision_Boundary.geojson` (~67 MB)
+- `Surface_Water.geojson` (~52 MB)
+- And other smaller GeoJSON files
+
+#### Downloading the GeoJSON Files
+
+A download script is provided to help you obtain these files. After cloning the repository:
+
+1. Make the download script executable:
+```bash
+chmod +x download_data.sh
+```
+
+2. Run the script:
+```bash
+./download_data.sh
+```
+
+3. When prompted, enter the URL where the GeoJSON files are hosted.
+
+If you don't have access to the file hosting URL, contact the repository owner to obtain these data files, or use alternative data sources for Houston.
+
 ### Prerequisites
 - Node.js (v14 or newer)
 - npm or yarn
@@ -27,10 +68,9 @@ This project includes several guides to help you understand and extend the codeb
 
 ### Installation
 
-1. Clone the repository
+1. Navigate to the project directory
 ```bash
-git clone <repository-url>
-cd Example_v01
+cd UH
 ```
 
 2. Install dependencies
