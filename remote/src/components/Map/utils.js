@@ -149,10 +149,6 @@ export const easeOutCubic = (x) => {
   return 1 - Math.pow(1 - x, 3);
 };
 
-// export const handleMapClick = (map, e) => {
-//   // Remove this function or comment it out
-// };
-
 export const initializeLayers = (map) => {
   if (!map) return;
 

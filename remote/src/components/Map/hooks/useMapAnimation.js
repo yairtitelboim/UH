@@ -333,7 +333,6 @@ export const useMapAnimation = (map) => {
     const startAnimation = useCallback(() => {
         if (!isAnimating.current) {
             isAnimating.current = true;
-            // animate();
         }
     }, []);
 
